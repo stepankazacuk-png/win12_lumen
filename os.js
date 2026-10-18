@@ -1890,9 +1890,13 @@ function lockScreen() {
   l.classList.remove('gone');
   tickClock();
 }
+function revealDesk() {
+  $('#desk').classList.add('on');
+}
 function unlock() {
   const l = $('#lock');
   l.classList.add('gone');
+  revealDesk();
   Sound.open();
   setTimeout(() => { l.style.display = 'none'; }, 700);
 }

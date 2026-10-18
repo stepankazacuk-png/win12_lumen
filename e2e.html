@@ -1,0 +1,67 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>E2E</title></head><body>
+<pre id="o"></pre><iframe id="f" src="index.html" width="1280" height="720"></iframe>
+<script>
+const L=[];const say=s=>{L.push(s);document.getElementById('o').textContent=L.join('\n')};
+// в headless транзишены замирают на currentTime=0, поэтому отключаем анимации
+const kill = d => { const s=d.createElement('style');
+  s.textContent='*{transition:none!important;animation:none!important}'; d.head.appendChild(s); };
+
+const eff=(el,w)=>{let n=el,op=1;while(n&&n.nodeType===1){const cs=w.getComputedStyle(n);
+  op*=parseFloat(cs.opacity); if(cs.display==='none'||cs.visibility==='hidden')return -1;
+  n=n.parentElement;} return Math.round(op*100)/100;};
+
+document.getElementById('f').onload=()=>setTimeout(()=>{
+ const d=document.getElementById('f').contentDocument,w=document.getElementById('f').contentWindow;
+ const desk=d.getElementById('desk'), lock=d.getElementById('lock');
+ say('1. Загрузка завершена: ' + (d.getElementById('boot')?'нет':'да'));
+ say('2. До входа: #desk opacity='+eff(desk,w)+' классы="'+desk.className+'"');
+ kill(d);
+ d.getElementById('lockBtn').click();
+ say('3. Нажато «Войти»');
+ setTimeout(()=>{
+   const vd=eff(desk,w);
+   say('');
+   say('=== ПОСЛЕ ВХОДА ===');
+   say('#desk opacity='+vd+' классы="'+desk.className+'" '+(vd>0.9?'ВИДЕН':'НЕВИДЕН'));
+   say('#lock display='+w.getComputedStyle(lock).display+' opacity='+eff(lock,w));
+   say('значков: '+d.querySelectorAll('.dicon').length+', кнопок в доке: '+d.querySelectorAll('#tbDock .tb-btn').length);
+   say('размер #desk: '+Math.round(desk.getBoundingClientRect().width)+'x'+Math.round(desk.getBoundingClientRect().height));
+
+   const apps=['terminal','explorer','settings','paint','music','calendar','calc','taskmgr','notepad','photos','store','security','mail'];
+   say('');
+   say('=== ПРИЛОЖЕНИЯ ===');
+   const bad=[];
+   apps.forEach(id=>{
+     let rec; try{ rec=w.eval('WM.open("'+id+'")') }catch(e){ say('  '+id+': ОШИБКА '+e.message); bad.push(id); return; }
+     if(!rec||!rec.node){ say('  '+id+': окно не создано'); bad.push(id); return; }
+     const v=eff(rec.node,w), r=rec.node.getBoundingClientRect();
+     const ok = v>0.9 && r.width>50 && r.height>50;
+     if(!ok) bad.push(id);
+     say('  '+id+': opacity='+v+' '+Math.round(r.width)+'x'+Math.round(r.height)+(ok?' ok':' FAIL'));
+   });
+
+   say('');
+   say('=== ПРОСМОТР (с аргументом) ===');
+   try{
+     const v=w.eval('WM.open("viewer",{i:0,name:"Аврора над хребтом"})');
+     const vv=eff(v.node,w), vr=v.node.getBoundingClientRect();
+     say('viewer: opacity='+vv+' '+Math.round(vr.width)+'x'+Math.round(vr.height)+(vv>0.9?' ok':' FAIL'));
+   }catch(e){ say('viewer: ОШИБКА '+e.message); }
+   say('');
+   say('=== ТЕРМИНАЛ ===');
+   const t=w.eval('WM.open("terminal")');
+   t.api.run('neofetch');
+   setTimeout(()=>{
+     const out=d.querySelector('.term');
+     const txt=out?out.textContent:'';
+     say('строк: '+(out?out.children.length:0));
+     say('вывод содержит "Windows 12 Pro": '+(txt.indexOf('Windows 12 Pro')>=0));
+     say('вывод содержит "nt12": '+(txt.indexOf('nt12')>=0));
+     say('');
+     say('ИТОГ: '+(vd>0.9?'рабочий стол виден; ':'РАБОЧИЙ СТОЛ НЕВИДЕН; ')+
+         (bad.length?'проблемы: '+bad.join(','):'все 14 приложений видны'));
+     document.title='DONE';
+   },600);
+ },900);
+},6500);
+</script></body></html>
