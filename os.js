@@ -1,5 +1,5 @@
 /* ============================================================================
-   Windows 12 — концептуальная веб-ОС
+   Люмен — вымышленная веб-ОС
    Ядро: виртуальная ФС, оконный менеджер, планировщик, приложения
    ========================================================================== */
 'use strict';
@@ -105,9 +105,9 @@ const VFS = (() => {
       'Users': { type: 'dir', children: {
         'Гость': { type: 'dir', children: {
           'Документы': { type: 'dir', children: {
-            'readme.txt': { type: 'file', ext: 'txt', content: 'Добро пожаловать в Windows 12!\n\nЭто концептуальная веб-операционная система, работающая целиком в браузере.\nЗдесь есть оконный менеджер, виртуальная файловая система и рабочий терминал.\n\nПопробуйте: help, neofetch, ls, cat readme.txt\n' },
-            'notes.md': { type: 'file', ext: 'txt', content: '# Заметки\n\n- Позвонить в орбитальный офис\n- Обновить ядро до 12.0.1\n- Проверить снап окон (Win + стрелки)\n' },
-            'todo.txt': { type: 'file', ext: 'txt', content: '[ ] Прочитать документацию\n[x] Загрузить Windows 12\n[ ] Написать свой планировщик\n' },
+            'readme.txt': { type: 'file', ext: 'txt', content: 'Добро пожаловать в Люмен!\n\nЭто концептуальная веб-операционная система, работающая целиком в браузере.\nЗдесь есть оконный менеджер, виртуальная файловая система и рабочий терминал.\n\nПопробуйте: help, neofetch, ls, cat readme.txt\n' },
+            'notes.md': { type: 'file', ext: 'txt', content: '# Заметки\n\n- Позвонить в орбитальный офис\n- Обновить ядро до люмен-1.4\n- Проверить снап окон (Win + стрелки)\n' },
+            'todo.txt': { type: 'file', ext: 'txt', content: '[ ] Прочитать документацию\n[x] Загрузить Люмен\n[ ] Написать свой планировщик\n' },
           } },
           'Изображения': { type: 'dir', children: {
             'aurora.png': { type: 'file', ext: 'png' },
@@ -119,18 +119,19 @@ const VFS = (() => {
             'orbit.wav': { type: 'file', ext: 'wav' },
           } },
           'Загрузки': { type: 'dir', children: {} },
+          'Рабочий стол': { type: 'dir', children: {} },
         } },
       } },
-      'Windows': { type: 'dir', children: {
-        'System32': { type: 'dir', children: {
-          'kernel12.sys': { type: 'file', ext: 'sys', content: '[binary]\n' },
-          'shell.exe': { type: 'file', ext: 'exe', content: '[binary]\n' },
-          'wm.dll': { type: 'file', ext: 'sys', content: '[binary]\n' },
+      'Система': { type: 'dir', children: {
+        'ядро': { type: 'dir', children: {
+          'lumen-core.sys': { type: 'file', ext: 'sys', content: '[binary]\n' },
+          'lsh.exe': { type: 'file', ext: 'exe', content: '[binary]\n' },
+          'plexus.dll': { type: 'file', ext: 'sys', content: '[binary]\n' },
         } },
         'Fonts': { type: 'dir', children: { 'Manrope.ttf': { type: 'file', ext: 'ttf' } } },
       } },
       'Program Files': { type: 'dir', children: {
-        'Windows 12': { type: 'dir', children: {
+        'Люмен': { type: 'dir', children: {
           'os.js': { type: 'file', ext: 'code', content: '// ядро системы\n' },
           'styles.css': { type: 'file', ext: 'code', content: '/* оформление */\n' },
         } },
@@ -230,7 +231,7 @@ const Notify = (() => {
 })();
 
 /* ============================================================================
-   МЕНЕДЖЕР ОКОН (WM12)
+   МЕНЕДЖЕР ОКОН (ПЛЕКСУС)
    ========================================================================== */
 const Apps = {};
 const WM = (() => {
@@ -473,13 +474,13 @@ WM.register({
     </div>`;
     const files = $('.files', rec.body), crumbs = $('.crumbs', rec.body), side = $('.app-side', rec.body);
     const QUICK = [
-      { t: 'Рабочий стол', p: 'C:\\Users\\Гость' },
+      { t: 'Рабочий стол', p: 'C:\\Users\\Гость\\Рабочий стол' },
       { t: 'Документы', p: 'C:\\Users\\Гость\\Документы' },
       { t: 'Изображения', p: 'C:\\Users\\Гость\\Изображения' },
       { t: 'Музыка', p: 'C:\\Users\\Гость\\Музыка' },
       { t: 'Загрузки', p: 'C:\\Users\\Гость\\Загрузки' },
       { t: 'Локальный диск C:', p: 'C:\\' },
-      { t: 'Windows', p: 'C:\\Windows' },
+      { t: 'Система', p: 'C:\\Система' },
       { t: 'Program Files', p: 'C:\\Program Files' },
     ];
     side.innerHTML = QUICK.map(q => `<button class="side-i" data-p="${esc(q.p)}">${ICO.folder}<span>${esc(q.t)}</span></button>`).join('');
@@ -631,7 +632,7 @@ WM.register({
     const print = (html, cls) => { out.appendChild(el('div', 'l ' + (cls || ''), html)); out.scrollTop = out.scrollHeight; };
     const prompt_ = () => { ps1.textContent = 'PS ' + st.cwd + '>'; };
 
-    print('<span class="p">PowerShell 12</span> <span class="d">(ядро 12.0.1, сборка 26100)</span>');
+    print('<span class="p">lsh</span> <span class="d">(ядро люмен-1.4, сборка 3040)</span>');
     print('<span class="d">Введите «help» для списка команд.</span>');
     print('');
     prompt_();
@@ -710,12 +711,12 @@ WM.register({
         else print('<span class="r">Процесс не найден: ' + esc(a) + '</span>');
       },
       neofetch() {
-        print(['<span class="p">        ▄▄▄▄▄▄▄▄        </span>  <span class="y">Гость@WINDOWS-12</span>',
+        print(['<span class="p">        ▄▄▄▄▄▄▄▄        </span>  <span class="y">Гость@LUMEN</span>',
           '<span class="p">      ▄█████████▄      </span>  ─────────────────────────',
-          '<span class="p">     ███████████████   </span>  ОС:        Windows 12 Pro (26100)',
-          '<span class="p">     ███  ███  ██████  </span>  Ядро:      nt12 12.0.1-generic',
+          '<span class="p">     ███████████████   </span>  ОС:        Люмен 1.4 (сборка 3040)',
+          '<span class="p">     ███  ███  ██████  </span>  Ядро:      люмен-1.4-generic',
           '<span class="p">     ███  ███  ██████  </span>  Оболочка:  Shell 12 (веб)',
-          '<span class="p">     ███████████████   </span>  Оконный:   WM12, снап на 12 зон',
+          '<span class="p">     ███████████████   </span>  Оконный:   Плексус, снап на 12 зон',
           '<span class="p">      ▀█████████▀      </span>  Шрифты:    Manrope / Unbounded',
           '<span class="p">        ▀▀▀▀▀▀▀▀        </span>  Тема:      ' + State.theme + ', акцент ' + State.accent,
           '                          Экран:     ' + window.innerWidth + 'x' + window.innerHeight,
@@ -731,7 +732,7 @@ WM.register({
       },
       date() { print(esc(new Date().toLocaleString('ru-RU'))); },
       whoami() { print('windows-12\\гость'); },
-      ver() { print('Windows 12 Pro, ядро 12.0.1, сборка 26100'); },
+      ver() { print('Люмен 1.4, ядро люмен-1.4, сборка 3040'); },
       clear() { out.innerHTML = ''; },
       exit() { WM.close(rec.id); },
       calc(a) {
@@ -893,8 +894,8 @@ const TaskMan = (() => {
   const bootTime = Date.now();
   const SYS = [
     { pid: 4, name: 'System', base: 1.2, mem: 88 },
-    { pid: 108, name: 'nt12 Kernel', base: 2.4, mem: 214 },
-    { pid: 512, name: 'WM12 (оконный менеджер)', base: 1.8, mem: 132 },
+    { pid: 108, name: 'люмен-ядро', base: 2.4, mem: 214 },
+    { pid: 512, name: 'Плексус (оконный менеджер)', base: 1.8, mem: 132 },
     { pid: 620, name: 'Shell 12', base: 3.1, mem: 168 },
     { pid: 704, name: 'AudioSrv', base: .6, mem: 54 },
     { pid: 812, name: 'Defender 12', base: 1.1, mem: 96 },
@@ -955,12 +956,12 @@ WM.register({
     function perfTab() {
       const cpu = TaskMan.procs().reduce((s, p) => s + p.cpu, 0) / 6;
       main.innerHTML = `<div style="padding:20px">
-        <div class="set-card" style="margin-bottom:12px"><h5>Процессор · nt12 12.0.1 · 16 ядер</h5>
+        <div class="set-card" style="margin-bottom:12px"><h5>Процессор · люмен-1.4 · 16 ядер</h5>
           <div style="font-family:var(--font-display);font-size:38px;font-weight:300">${clamp(cpu, 1, 99).toFixed(0)}%</div>
           <canvas class="cpu-graph" width="760" height="130" style="width:100%;height:130px;border-radius:12px;background:rgba(0,0,0,.3)"></canvas></div>
         <div class="set-grid" style="padding:0">
           <div class="set-card"><h5>Память</h5><div style="font-size:26px;font-family:var(--font-display);font-weight:300">9.4 / 32 ГБ</div></div>
-          <div class="set-card"><h5>Графика · WM12 GPU</h5><div style="font-size:26px;font-family:var(--font-display);font-weight:300">${clamp(cpu * 1.3, 2, 99).toFixed(0)}%</div></div>
+          <div class="set-card"><h5>Графика · Плексус GPU</h5><div style="font-size:26px;font-family:var(--font-display);font-weight:300">${clamp(cpu * 1.3, 2, 99).toFixed(0)}%</div></div>
           <div class="set-card"><h5>Аптайм</h5><div style="font-size:22px;font-family:var(--font-display);font-weight:300">${TaskMan.uptime()}</div></div>
           <div class="set-card"><h5>Сеть</h5><div style="font-size:22px;font-family:var(--font-display);font-weight:300">1.2 Гбит/с</div></div>
         </div></div>`;
@@ -987,7 +988,7 @@ WM.register({
       }, 700);
     }
     function startupTab() {
-      const NAMES = ['Shell 12', 'Defender 12', 'AudioSrv', 'WM12', 'CloudSync'];
+      const NAMES = ['lsh', 'Страж', 'AudioSrv', 'Плексус', 'CloudSync'];
       main.innerHTML = '<div style="padding:16px">' + NAMES.map((n, i) =>
         '<div class="set-row" style="border-bottom:1px solid var(--stroke)"><span>' + n + '</span><div class="sw ' + (i < 3 ? 'on' : '') + '"></div></div>').join('') + '</div>';
       main.onclick = e => { const s = e.target.closest('.sw'); if (s) { s.classList.toggle('on'); Sound.click(); } };
@@ -1016,7 +1017,7 @@ WM.register({
   id: 'photos', title: 'Фотографии', icon: ICO.photos, w: 840, h: 560,
   init(rec) {
     rec.body.innerHTML = '<div class="app">' +
-      '<div class="app-bar"><b style="font-size:12.5px">Коллекция «Обои Windows 12»</b><span style="flex:1"></span>' +
+      '<div class="app-bar"><b style="font-size:12.5px">Коллекция «Обои Люмен»</b><span style="flex:1"></span>' +
       '<span style="font-size:11.5px;color:var(--txt-dim)">' + PHOTOS.length + ' изображений</span></div>' +
       '<div class="app-main"><div class="gal">' + PHOTOS.map((n, i) =>
         '<figure data-i="' + i + '"><div class="art" style="' + ART(i) + '"></div><figcaption>' + esc(n) + '</figcaption></figure>').join('') +
@@ -1175,7 +1176,7 @@ WM.register({
     function setTrack(i, autoplay) {
       ti = (i + TRACKS.length) % TRACKS.length; step = 0;
       nameEl.textContent = TRACKS[ti].n;
-      artEl.textContent = TRACKS[ti].a + ' · Windows 12 Sessions';
+      artEl.textContent = TRACKS[ti].a + ' · Люмен Sessions';
       $('.tb-title', rec.node).textContent = 'Музыка — ' + TRACKS[ti].n;
       if (autoplay) start();
     }
@@ -1218,7 +1219,7 @@ WM.register({
   id: 'calendar', title: 'Календарь', icon: ICO.cal, w: 780, h: 560,
   init(rec) {
     const cur = new Date(); cur.setDate(1);
-    const EVENTS = { 3: 'Синк ядра', 11: 'Ревью WM12', 17: 'Релиз 12.0.1', 24: 'Демо команде' };
+    const EVENTS = { 3: 'Синк ядра', 11: 'Ревью Плексуса', 17: 'Релиз 1.4', 24: 'Демо команде' };
     function render() {
       const y = cur.getFullYear(), m = cur.getMonth();
       const start = (new Date(y, m, 1).getDay() + 6) % 7;
@@ -1257,7 +1258,7 @@ WM.register({
   id: 'mail', title: 'Orbit Mail', icon: ICO.mail, w: 840, h: 560,
   init(rec) {
     const MAIL = [
-      { f: 'Ядро · Отдел релизов', s: 'Windows 12.0.1 — окно обновления', t: '10:42', b: 'Планируем выкатку на четверг. Проверьте совместимость WM12 со снапом на 12 зон и обновите базовые образы.' },
+      { f: 'Ядро · Отдел релизов', s: 'Люмен 1.4 — окно обновления', t: '10:42', b: 'Планируем выкатку на четверг. Проверьте совместимость «Плексуса» со снапом на 12 зон и обновите базовые образы.' },
       { f: 'Команда дизайна', s: 'Новая тема «Магента»', t: '09:15', b: 'Добавили акцент с градиентом и переработали панель задач. Макеты приложены к задаче.' },
       { f: 'Орбитальная станция', s: 'Пропускной режим на неделю', t: 'Вчера', b: 'Подтвердите график смен, пожалуйста. Свободные слоты: 03:00 и 11:00 по бортовому времени.' },
       { f: 'Defender 12', s: 'Еженедельный отчёт', t: 'Пн', b: 'За неделю обработано 1 284 события, угроз не выявлено. База сигнатур обновлена.' },
@@ -1309,12 +1310,12 @@ WM.register({
       { n: 'Диспетчер задач', d: 'Процессы и производительность', i: ICO.task, app: 'taskmgr' },
     ];
     rec.body.innerHTML = '<div class="app">' +
-      '<div class="app-bar"><b style="font-size:13px">Магазин Windows 12</b><span style="flex:1"></span>' +
+      '<div class="app-bar"><b style="font-size:13px">Магазин Люмен</b><span style="flex:1"></span>' +
       '<span style="font-size:11.5px;color:var(--txt-dim)">Установлено: ' + ITEMS.length + '</span></div>' +
       '<div class="app-main" style="padding:16px">' +
         '<div style="border-radius:18px;padding:26px;margin-bottom:18px;background:linear-gradient(140deg,rgba(92,200,255,.22),rgba(123,108,255,.14));border:1px solid var(--stroke)">' +
           '<div style="font-family:var(--font-display);font-weight:400;font-size:24px">Избранное этой недели</div>' +
-          '<p style="font-size:12.5px;color:var(--txt-dim);margin-top:8px">Приложения, оптимизированные для WM12 и снапа на 12 зон.</p></div>' +
+          '<p style="font-size:12.5px;color:var(--txt-dim);margin-top:8px">Приложения, оптимизированные для «Плексуса» и снапа на 12 зон.</p></div>' +
         '<div class="gal">' + ITEMS.map(a =>
           '<figure style="cursor:default"><div class="art" style="display:grid;place-items:center;background:linear-gradient(150deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border-bottom:1px solid var(--stroke)">' +
           '<span style="width:52px;height:52px;display:block;color:var(--accent)">' + a.i + '</span></div>' +
@@ -1331,7 +1332,7 @@ WM.register({
    ПРИЛОЖЕНИЕ: БЕЗОПАСНОСТЬ WINDOWS
    ========================================================================== */
 WM.register({
-  id: 'security', title: 'Безопасность Windows', icon: ICO.shield, w: 740, h: 540,
+  id: 'security', title: 'Безопасность Люмен', icon: ICO.shield, w: 740, h: 540,
   init(rec) {
     const CHECKS = [
       { t: 'Защита от вирусов и угроз', s: 'Активна · базы обновлены', ok: true },
@@ -1342,7 +1343,7 @@ WM.register({
       { t: 'Резервное копирование', s: 'Последняя копия: 2 дня назад', ok: false },
     ];
     rec.body.innerHTML = '<div class="app">' +
-      '<div class="app-bar"><b style="font-size:13px">Безопасность Windows 12</b><span style="flex:1"></span>' +
+      '<div class="app-bar"><b style="font-size:13px">Безопасность Люмен</b><span style="flex:1"></span>' +
       '<button class="btn" data-a="scan">' + ICO.shield + ' Быстрая проверка</button></div>' +
       '<div class="app-main" style="padding:16px">' +
         '<div style="display:flex;align-items:center;gap:18px;padding:22px;border-radius:18px;margin-bottom:16px;background:linear-gradient(140deg,rgba(56,224,168,.2),rgba(92,200,255,.12));border:1px solid var(--stroke)">' +
@@ -1432,7 +1433,7 @@ WM.register({
             '<button class="chip" data-tile="rows">Строки</button>' +
             '<button class="chip" data-tile="cascade">Каскад</button>' +
             '<button class="chip" data-tile="min">Свернуть все</button></div>' +
-            '<p style="font-size:11.5px;color:var(--txt-dim);margin-top:12px">Совет: потяните окно к краю экрана — Windows 12 предложит зону прилипания. <kbd>Win</kbd>+<kbd>←</kbd>/<kbd>→</kbd> — половина экрана, <kbd>Win</kbd>+<kbd>↑</kbd> — развернуть.</p></div>' +
+            '<p style="font-size:11.5px;color:var(--txt-dim);margin-top:12px">Совет: потяните окно к краю экрана — Люмен предложит зону прилипания. <kbd>Win</kbd>+<kbd>←</kbd>/<kbd>→</kbd> — половина экрана, <kbd>Win</kbd>+<kbd>↑</kbd> — развернуть.</p></div>' +
         '</div>';
       },
       sys() {
@@ -1455,7 +1456,7 @@ WM.register({
         '</div>';
       },
       apps() {
-        return head('Приложения', 'Установленные компоненты Windows 12.') +
+        return head('Приложения', 'Установленные компоненты Люмен.') +
           '<div style="padding:0 20px 20px">' + Object.keys(Apps).map(k => Apps[k]).map(a =>
             '<div class="set-row" style="border-bottom:1px solid var(--stroke)">' +
             '<span style="display:flex;align-items:center;gap:12px"><span style="width:20px;height:20px;display:inline-block">' + a.icon + '</span>' + esc(a.title) + '</span>' +
@@ -1464,23 +1465,23 @@ WM.register({
       about() {
         return '<div style="padding:20px">' +
           '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
-          '<div><h2>Windows 12 Pro</h2><p>Концептуальная веб-операционная система · ядро 12.0.1, сборка 26100</p></div></div>' +
+          '<div><h2>Люмен 1.4</h2><p>Вымышленная веб-операционная система · ядро люмен-1.4, сборка 3040</p></div></div>' +
           '<div class="set-grid" style="padding:0">' +
           '<div class="set-card"><h5>Характеристики</h5>' +
             '<div class="spec"><span>Устройство</span><b>ORBITAL-12</b></div>' +
             '<div class="spec"><span>Процессор</span><b>Nt12 Core X · 16 ядер</b></div>' +
             '<div class="spec"><span>ОЗУ</span><b>32 ГБ LPDDR6</b></div>' +
-            '<div class="spec"><span>Графика</span><b>WM12 GPU</b></div>' +
+            '<div class="spec"><span>Графика</span><b>Плексус GPU</b></div>' +
             '<div class="spec"><span>Накопитель</span><b>512 ГБ NVMe</b></div>' +
             '<div class="spec"><span>Аптайм</span><b>' + TaskMan.uptime() + '</b></div></div>' +
           '<div class="set-card"><h5>Сведения</h5>' +
-            '<div class="spec"><span>Ядро</span><b>nt12 12.0.1-generic</b></div>' +
-            '<div class="spec"><span>Оконный менеджер</span><b>WM12</b></div>' +
+            '<div class="spec"><span>Ядро</span><b>люмен-1.4-generic</b></div>' +
+            '<div class="spec"><span>Оконный менеджер</span><b>Плексус</b></div>' +
             '<div class="spec"><span>Платформа</span><b>' + esc((navigator.platform || 'web').slice(0, 22)) + '</b></div>' +
             '<div class="spec"><span>Обновления</span><b>Актуально</b></div>' +
             '<div class="spec"><span>Активация</span><b>Активировано</b></div></div>' +
           '<div class="set-card" style="grid-column:span 2"><h5>О сборке</h5>' +
-            '<p style="font-size:12px;color:var(--txt-dim);line-height:1.7">Это художественный концепт, а не продукт Microsoft. «Windows 12» здесь — вымышленная система, собранная на HTML, CSS и JavaScript. Все приложения работают локально: файловая система виртуальная, звук синтезируется через Web Audio API.</p></div>' +
+            '<p style="font-size:12px;color:var(--txt-dim);line-height:1.7">Это художественный концепт, а не продукт Microsoft. «Люмен» здесь — вымышленная система, собранная на HTML, CSS и JavaScript. Все приложения работают локально: файловая система виртуальная, звук синтезируется через Web Audio API.</p></div>' +
           '</div></div>';
       },
     };
@@ -1556,9 +1557,126 @@ const DESK = [
 ];
 const PINNED = ['explorer', 'terminal', 'notepad', 'settings', 'photos', 'music', 'calc', 'store', 'taskmgr'];
 
+/* --- Папки и файлы, созданные пользователем на рабочем столе ---
+   Хранятся в виртуальной ФС (C:\Users\Гость\Рабочий стол), поэтому видны
+   и в Проводнике, и в терминале. Список имён держим в localStorage,
+   чтобы значки не пропадали после перезагрузки. */
+const DESK_DIR = 'C:\\Users\\Гость\\Рабочий стол';
+const DESK_KEY = 'lumen.deskItems';
+let deskItems = [];
+
+function loadDeskItems() {
+  try {
+    const raw = localStorage.getItem(DESK_KEY);
+    deskItems = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(deskItems)) deskItems = [];
+  } catch (e) { deskItems = []; }
+  VFS.mkdir(DESK_DIR);
+  deskItems.forEach(it => {
+    if (it.type === 'dir') VFS.mkdir(DESK_DIR + '\\' + it.name);
+    else if (!VFS.node(DESK_DIR + '\\' + it.name)) VFS.write(DESK_DIR + '\\' + it.name, '', it.ext);
+  });
+}
+function saveDeskItems() {
+  try { localStorage.setItem(DESK_KEY, JSON.stringify(deskItems)); } catch (e) { /* недоступно */ }
+}
+
+// Свободное имя: «Новая папка», «Новая папка (2)», …
+function freeName(base, ext) {
+  const taken = n => deskItems.some(it => it.name.toLowerCase() === n.toLowerCase());
+  const build = i => (i === 1 ? base : base + ' (' + i + ')') + (ext ? '.' + ext : '');
+  let n = build(1), i = 1;
+  while (taken(n)) { i++; n = build(i); }
+  return n;
+}
+function createDeskFolder() {
+  const nm = freeName('Новая папка');
+  const res = VFS.mkdir(DESK_DIR + '\\' + nm);
+  if (!res.ok) { Sound.error(); Notify('Рабочий стол', res.err, ICO.folder); return null; }
+  deskItems.push({ type: 'dir', name: nm });
+  saveDeskItems(); renderIcons();
+  Sound.notif();
+  Notify('Рабочий стол', 'Создана папка «' + nm + '»', ICO.folder, true);
+  return nm;
+}
+function createDeskFile() {
+  const nm = freeName('Новый текстовый документ', 'txt');
+  const res = VFS.write(DESK_DIR + '\\' + nm, '');
+  if (!res.ok) { Sound.error(); Notify('Рабочий стол', res.err, ICO.note); return null; }
+  deskItems.push({ type: 'file', name: nm, ext: 'txt' });
+  saveDeskItems(); renderIcons();
+  Sound.notif();
+  Notify('Рабочий стол', 'Создан файл «' + nm + '»', ICO.note, true);
+  return nm;
+}
+function removeDeskItem(name) {
+  deskItems = deskItems.filter(it => it.name !== name);
+  saveDeskItems(); renderIcons();
+}
+function renameDeskItem(oldName, newName) {
+  const it = deskItems.find(x => x.name === oldName);
+  if (!it) return false;
+  const from = DESK_DIR + '\\' + oldName, to = DESK_DIR + '\\' + newName;
+  if (VFS.node(to)) { Sound.error(); Notify('Рабочий стол', 'Имя уже занято', ICO.ren); return false; }
+  const src = VFS.node(from);
+  if (src && src.type === 'dir') {
+    VFS.mkdir(to);
+    deepCopy(src, VFS.node(to));
+  } else {
+    const r = VFS.read(from);
+    VFS.write(to, r.ok ? r.content : '', it.ext);
+  }
+  VFS.rm(from, true);
+  it.name = newName;
+  saveDeskItems(); renderIcons();
+  Sound.notif();
+  return true;
+}
+// Копирует содержимое каталога в существующий целевой каталог.
+function deepCopy(from, to) {
+  Object.keys(from.children || {}).forEach(k => {
+    const c = from.children[k];
+    if (c.type === 'dir') { to.children[k] = { type: 'dir', children: {} }; deepCopy(c, to.children[k]); }
+    else to.children[k] = { type: 'file', ext: c.ext, content: c.content };
+  });
+}
+
 function renderIcons() {
   const host = $('#icons');
   host.innerHTML = '';
+
+  // Созданные пользователем папки и файлы — идут первыми
+  deskItems.forEach(it => {
+    const isDir = it.type === 'dir';
+    const ico = isDir ? ICO.folder : (it.ext === 'txt' ? ICO.txt : ICO.file);
+    const n = el('div', 'dicon', '<span class="ico">' + ico + '</span><span>' + esc(it.name) + '</span>');
+    const open = () => isDir
+      ? WM.open('explorer', DESK_DIR + '\\' + it.name)
+      : WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
+    n.ondblclick = () => { Sound.click(); open(); };
+    n.onclick = () => { $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+    n.oncontextmenu = e => {
+      e.preventDefault(); e.stopPropagation(); n.onclick();
+      openCtx(e.clientX, e.clientY, [
+        { t: 'Открыть', i: ICO.exe, f: open },
+        { t: 'Переименовать', i: ICO.ren, f: () => {
+            const nn = prompt('Новое имя:', it.name);
+            if (nn && nn !== it.name) renameDeskItem(it.name, nn);
+          } },
+        { sep: true },
+        { t: 'Удалить', i: ICO.trash, f: () => {
+            VFS.rm(DESK_DIR + '\\' + it.name, true);
+            removeDeskItem(it.name);
+            Sound.notif();
+            Notify('Рабочий стол', 'Удалено: ' + it.name, ICO.trash, true);
+          } },
+        { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства',
+            it.name + (isDir ? ' — папка' : ' — файл (' + (it.ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
+      ]);
+    };
+    host.appendChild(n);
+  });
+
   DESK.forEach(d => {
     const n = el('div', 'dicon', '<span class="ico">' + d.i + '</span><span>' + esc(d.t) + '</span>');
     n.ondblclick = () => { Sound.click(); d.f(); };
@@ -1567,8 +1685,8 @@ function renderIcons() {
       e.preventDefault(); e.stopPropagation(); n.onclick();
       openCtx(e.clientX, e.clientY, [
         { t: 'Открыть', i: ICO.exe, f: d.f },
-        { t: 'Переименовать', i: ICO.ren, f: () => Notify('Рабочий стол', 'Переименование недоступно в этой сборке', ICO.ren, true) },
         { sep: true },
+        { t: 'Создать папку', i: ICO.plus, f: createDeskFolder },
         { t: 'Свойства', i: ICO.settings, f: () => WM.open('settings') },
       ]);
     };
@@ -1814,7 +1932,7 @@ function activeWin() {
   if (!list.length) return null;
   return list.slice().sort((a, b) => +b.node.style.zIndex - +a.node.style.zIndex)[0];
 }
-function cycleWindows(dir) {
+function cycleWins(dir) {
   const list = Object.keys(State.open).map(k => State.open[k]);
   if (!list.length) return;
   if (list.length === 1) { WM.unminimize(list[0].id); WM.focus(list[0].id); return; }
@@ -1862,7 +1980,7 @@ function initKeys() {
       if (r) { if (r.minimized) WM.toggleMin(r.id); else WM.minimize(r.id); }
       return;
     }
-    if (meta && e.key === 'Tab') { e.preventDefault(); cycleWindows(e.shiftKey ? -1 : 1); return; }
+    if (meta && e.key === 'Tab') { e.preventDefault(); cycleWins(e.shiftKey ? -1 : 1); return; }
     if (meta) { e.preventDefault(); StartMenu.toggle(); meta = false; return; }
 
     if (e.altKey && e.key === 'F4') {
@@ -1875,7 +1993,7 @@ function initKeys() {
     if (e.key === 'Escape') { closeCtx(); Quick.close(); Widgets.close(); Spot.close(); StartMenu.closeMenu(); return; }
     if (e.key === 'F5') { e.preventDefault(); renderIcons(); return; }
     if (typing) return;
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !StartMenu.isOpen()) { e.preventDefault(); cycleWindows(e.key === 'ArrowDown' ? 1 : -1); }
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !StartMenu.isOpen()) { e.preventDefault(); cycleWins(e.key === 'ArrowDown' ? 1 : -1); }
   });
   window.addEventListener('keyup', e => { if (e.key === 'Meta') meta = false; });
   window.addEventListener('blur', () => { meta = false; });
@@ -1926,6 +2044,9 @@ function initDesktopCtx() {
         e.target.closest('#quick') || e.target.closest('#widgets') || e.target.closest('.dicon')) return;
     e.preventDefault();
     openCtx(e.clientX, e.clientY, [
+      { t: 'Создать папку', i: ICO.plus, f: () => { createDeskFolder(); } },
+      { t: 'Создать текстовый файл', i: ICO.note, f: () => { createDeskFile(); } },
+      { sep: true },
       { t: 'Обновить', i: ICO.refresh, f: () => { renderIcons(); Widgets.stats(); } },
       { t: 'Открыть терминал', i: ICO.term, f: () => WM.open('terminal'), k: 'Ctrl+Alt+T' },
       { t: 'Открыть Проводник', i: ICO.folder, f: () => WM.open('explorer'), k: 'Win+E' },
@@ -1954,7 +2075,7 @@ function loadPrefs() {
   } catch (e) { /* хранилище недоступно */ }
 }
 function bootSequence() {
-  const TIPS = ['Инициализация ядра nt12…', 'Монтирование виртуальной ФС…', 'Запуск оконного менеджера WM12…',
+  const TIPS = ['Инициализация ядра люмен…', 'Монтирование виртуальной ФС…', 'Запуск оконного менеджера «Плексус»…',
     'Калибровка снапа на 12 зон…', 'Синтез звуковой подсистемы…', 'Загрузка профиля «Гость»…', 'Почти готово…'];
   const bar = $('#bootBar'), tip = $('#bootTip');
   let shown = 0, pct = 0;
@@ -1978,6 +2099,7 @@ function bootSequence() {
 
 function init() {
   loadPrefs();
+  loadDeskItems();
   renderIcons();
   renderTaskbar();
   Quick.build();
@@ -2035,8 +2157,8 @@ function init() {
   setInterval(tickClock, 1000);
   setInterval(() => { if (Widgets.isOpen()) Widgets.stats(); }, 2200);
 
-  setTimeout(() => Notify('Windows 12', 'Система готова. Нажмите Win или откройте «Пуск», чтобы начать.', ICO.sparkle), 2600);
-  setTimeout(() => Notify('Совет', 'Потяните окно к краю экрана — WM12 предложит зону прилипания. Win+←/→ — половина экрана.', ICO.max, true), 7200);
+  setTimeout(() => Notify('Люмен', 'Система готова. Нажмите Win или откройте «Пуск», чтобы начать.', ICO.sparkle), 2600);
+  setTimeout(() => Notify('Совет', 'Потяните окно к краю экрана — Люмен предложит зону прилипания. Win+←/→ — половина экрана.', ICO.max, true), 7200);
 
   bootSequence();
 }

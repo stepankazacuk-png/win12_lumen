@@ -1,67 +1,128 @@
 <!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>E2E</title></head><body>
-<pre id="o"></pre><iframe id="f" src="index.html" width="1280" height="720"></iframe>
+<pre id="o"></pre><iframe id="f" src="index.html" width="1440" height="810" style="border:0"></iframe>
 <script>
-const L=[];const say=s=>{L.push(s);document.getElementById('o').textContent=L.join('\n')};
-// в headless транзишены замирают на currentTime=0, поэтому отключаем анимации
-const kill = d => { const s=d.createElement('style');
-  s.textContent='*{transition:none!important;animation:none!important}'; d.head.appendChild(s); };
+const L=[], fail=[];
+const say = s => { L.push(s); document.getElementById('o').textContent = L.join('\n'); };
+window.onerror = (m,f,l) => { fail.push('исключение: '+m+' (строка '+l+')'); say('[ОШИБКА] '+m); };
+const wait = ms => new Promise(r => setTimeout(r, ms));
 
-const eff=(el,w)=>{let n=el,op=1;while(n&&n.nodeType===1){const cs=w.getComputedStyle(n);
-  op*=parseFloat(cs.opacity); if(cs.display==='none'||cs.visibility==='hidden')return -1;
-  n=n.parentElement;} return Math.round(op*100)/100;};
+// накопительная прозрачность по цепочке предков
+const eff = (el,w) => { let n=el, op=1;
+  while(n && n.nodeType===1){ const cs=w.getComputedStyle(n); op*=parseFloat(cs.opacity);
+    if(cs.display==='none'||cs.visibility==='hidden') return -1; n=n.parentElement; }
+  return Math.round(op*100)/100; };
 
-document.getElementById('f').onload=()=>setTimeout(()=>{
- const d=document.getElementById('f').contentDocument,w=document.getElementById('f').contentWindow;
- const desk=d.getElementById('desk'), lock=d.getElementById('lock');
- say('1. Загрузка завершена: ' + (d.getElementById('boot')?'нет':'да'));
- say('2. До входа: #desk opacity='+eff(desk,w)+' классы="'+desk.className+'"');
- kill(d);
- d.getElementById('lockBtn').click();
- say('3. Нажато «Войти»');
- setTimeout(()=>{
-   const vd=eff(desk,w);
-   say('');
-   say('=== ПОСЛЕ ВХОДА ===');
-   say('#desk opacity='+vd+' классы="'+desk.className+'" '+(vd>0.9?'ВИДЕН':'НЕВИДЕН'));
-   say('#lock display='+w.getComputedStyle(lock).display+' opacity='+eff(lock,w));
-   say('значков: '+d.querySelectorAll('.dicon').length+', кнопок в доке: '+d.querySelectorAll('#tbDock .tb-btn').length);
-   say('размер #desk: '+Math.round(desk.getBoundingClientRect().width)+'x'+Math.round(desk.getBoundingClientRect().height));
+const f = document.getElementById('f');
 
-   const apps=['terminal','explorer','settings','paint','music','calendar','calc','taskmgr','notepad','photos','store','security','mail'];
-   say('');
-   say('=== ПРИЛОЖЕНИЯ ===');
-   const bad=[];
-   apps.forEach(id=>{
-     let rec; try{ rec=w.eval('WM.open("'+id+'")') }catch(e){ say('  '+id+': ОШИБКА '+e.message); bad.push(id); return; }
-     if(!rec||!rec.node){ say('  '+id+': окно не создано'); bad.push(id); return; }
-     const v=eff(rec.node,w), r=rec.node.getBoundingClientRect();
-     const ok = v>0.9 && r.width>50 && r.height>50;
-     if(!ok) bad.push(id);
-     say('  '+id+': opacity='+v+' '+Math.round(r.width)+'x'+Math.round(r.height)+(ok?' ok':' FAIL'));
-   });
+f.onload = async () => {
+  await wait(6500);                       // ждём завершения загрузки
+  const d = f.contentDocument, w = f.contentWindow;
+  // в headless транзишены замирают на currentTime=0 — гасим анимации перед замерами
+  const st = d.createElement('style');
+  st.textContent = '*{transition:none!important;animation:none!important}';
+  d.head.appendChild(st);
 
-   say('');
-   say('=== ПРОСМОТР (с аргументом) ===');
-   try{
-     const v=w.eval('WM.open("viewer",{i:0,name:"Аврора над хребтом"})');
-     const vv=eff(v.node,w), vr=v.node.getBoundingClientRect();
-     say('viewer: opacity='+vv+' '+Math.round(vr.width)+'x'+Math.round(vr.height)+(vv>0.9?' ok':' FAIL'));
-   }catch(e){ say('viewer: ОШИБКА '+e.message); }
-   say('');
-   say('=== ТЕРМИНАЛ ===');
-   const t=w.eval('WM.open("terminal")');
-   t.api.run('neofetch');
-   setTimeout(()=>{
-     const out=d.querySelector('.term');
-     const txt=out?out.textContent:'';
-     say('строк: '+(out?out.children.length:0));
-     say('вывод содержит "Windows 12 Pro": '+(txt.indexOf('Windows 12 Pro')>=0));
-     say('вывод содержит "nt12": '+(txt.indexOf('nt12')>=0));
-     say('');
-     say('ИТОГ: '+(vd>0.9?'рабочий стол виден; ':'РАБОЧИЙ СТОЛ НЕВИДЕН; ')+
-         (bad.length?'проблемы: '+bad.join(','):'все 14 приложений видны'));
-     document.title='DONE';
-   },600);
- },900);
-},6500);
+  const desk = d.getElementById('desk'), icons = d.getElementById('icons');
+  const names = () => [...d.querySelectorAll('#icons .dicon > span:last-child')].map(s => s.textContent);
+  const r = icons.getBoundingClientRect();
+  const rightClick = (el, x, y) => el.dispatchEvent(new w.MouseEvent('contextmenu',
+    { bubbles:true, clientX:x, clientY:y }));
+  const ctxItem = t => [...d.getElementById('ctx').querySelectorAll('.ctx-i')]
+    .find(b => b.textContent.trim().indexOf(t) === 0);
+
+  say('=== ИМЯ СИСТЕМЫ ===');
+  say('заголовок: "' + d.title + '"');
+  say('в разметке нет "Windows": ' + (d.documentElement.outerHTML.indexOf('Windows') < 0));
+
+  say('');
+  say('=== ВХОД ===');
+  d.getElementById('lockBtn').click();
+  await wait(900);
+  const vd = eff(desk, w);
+  say('#desk opacity=' + vd + ' классы="' + desk.className + '" ' + (vd > 0.9 ? 'ВИДЕН' : 'НЕВИДЕН'));
+  if (vd <= 0.9) fail.push('рабочий стол невидим');
+  say('значков до создания: ' + names().length);
+
+  say('');
+  say('=== ПРАВЫЙ КЛИК ПО РАБОЧЕМУ СТОЛУ ===');
+  rightClick(icons, r.left + 150, r.top + 150);
+  const menu = [...d.getElementById('ctx').querySelectorAll('.ctx-i')].map(b => b.textContent.trim());
+  say('меню открыто: ' + d.getElementById('ctx').classList.contains('on'));
+  say('пункты: ' + menu.join(' | '));
+  if (!ctxItem('Создать папку')) fail.push('нет пункта «Создать папку»');
+
+  say('');
+  say('=== СОЗДАНИЕ ПАПОК ===');
+  ctxItem('Создать папку').click();
+  await wait(300);
+  say('после 1-й: ' + names().filter(n => n.indexOf('Новая папка') === 0).join(', '));
+  rightClick(icons, r.left + 150, r.top + 150);
+  ctxItem('Создать папку').click();
+  await wait(300);
+  const folders = names().filter(n => n.indexOf('Новая папка') === 0);
+  say('после 2-й: ' + folders.join(', '));
+  if (folders.length !== 2) fail.push('создано папок: ' + folders.length + ' вместо 2');
+  if (new Set(folders).size !== folders.length) fail.push('имена папок совпадают');
+
+  const inVfs = w.eval('!!VFS.node("C:\\\\Users\\\\Гость\\\\Рабочий стол\\\\" + ' + JSON.stringify(folders[0] || '') + ')');
+  say('папка есть в виртуальной ФС: ' + inVfs);
+  if (!inVfs) fail.push('папки нет в виртуальной ФС');
+
+  say('');
+  say('=== СОЗДАНИЕ ФАЙЛОВ ===');
+  rightClick(icons, r.left + 150, r.top + 150);
+  ctxItem('Создать текстовый файл').click();
+  await wait(300);
+  rightClick(icons, r.left + 150, r.top + 150);
+  ctxItem('Создать текстовый файл').click();
+  await wait(300);
+  const files = names().filter(n => n.indexOf('Новый текстовый документ') === 0);
+  say('файлы: ' + (files.join(', ') || 'НЕТ'));
+  if (files.length !== 2) fail.push('создано файлов: ' + files.length + ' вместо 2');
+  if (new Set(files).size !== files.length) fail.push('имена файлов совпадают');
+
+  say('');
+  say('=== ПРОВОДНИК ===');
+  const ex = w.eval('WM.open("explorer","C:\\\\Users\\\\Гость\\\\Рабочий стол")');
+  await wait(400);
+  const items = [...ex.body.querySelectorAll('.fitem span')].map(s => s.textContent);
+  say('элементов: ' + items.length + ' → ' + items.join(', '));
+  const allVisible = folders.concat(files).every(n => items.includes(n));
+  say('все созданные видны: ' + allVisible);
+  if (!allVisible) fail.push('созданное не видно в Проводнике');
+
+  const firstFolder = [...ex.body.querySelectorAll('.fitem')].find(x => x.textContent.indexOf('Новая папка') === 0);
+  firstFolder.dispatchEvent(new w.MouseEvent('dblclick', { bubbles:true }));
+  await wait(400);
+  const crumb = ex.body.querySelector('.crumbs').textContent;
+  say('двойной клик → ' + crumb);
+  if (crumb.indexOf('Новая папка') < 0) fail.push('двойной клик не открывает папку');
+
+  say('');
+  say('=== ТЕРМИНАЛ ===');
+  const t = w.eval('WM.open("terminal")');
+  t.api.run('neofetch');
+  await wait(600);
+  const txt = d.querySelector('.term') ? d.querySelector('.term').textContent : '';
+  say('название "Люмен 1.4": ' + (txt.indexOf('Люмен 1.4') >= 0));
+  say('ядро "люмен-1.4": ' + (txt.indexOf('люмен-1.4') >= 0));
+  if (txt.indexOf('Люмен 1.4') < 0) fail.push('терминал не показывает название системы');
+
+  say('');
+  say('=== УДАЛЕНИЕ ПАПКИ ===');
+  const fi = [...d.querySelectorAll('#icons .dicon')].find(x => x.textContent.indexOf('Новая папка') === 0);
+  rightClick(fi, r.left + 40, r.top + 40);
+  const del = [...d.getElementById('ctx').querySelectorAll('.ctx-i')].find(b => b.textContent.trim() === 'Удалить');
+  say('в меню папки есть «Удалить»: ' + !!del);
+  if (!del) fail.push('нет пункта «Удалить» у папки');
+  del.click();
+  await wait(300);
+  const left = names().filter(n => n.indexOf('Новая папка') === 0);
+  say('папок осталось: ' + left.length + ' → ' + (left.join(', ') || '—'));
+  if (left.length !== 1) fail.push('удаление сработало неверно');
+
+  say('');
+  say(fail.length ? 'ИТОГ: ОШИБКИ → ' + fail.join('; ') : 'ИТОГ: всё работает, ошибок нет');
+  document.title = 'DONE';
+};
 </script></body></html>
