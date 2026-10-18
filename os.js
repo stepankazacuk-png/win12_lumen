@@ -58,6 +58,7 @@ const State = {
   accent: '#5cc8ff', accent2: '#7b6cff', theme: 'dark', wallpaper: 'aurora',
   align: 'center', transparency: true, volume: 62, brightness: 100,
   night: false, focus: false, tiling: false, zTop: 100, open: {}, seq: 0,
+  admin: false, adminAttempts: 0, adminLog: [],
 };
 
 /* ------------------------------ UTILS ------------------------------------- */
@@ -621,7 +622,7 @@ WM.register({
    ПРИЛОЖЕНИЕ: ТЕРМИНАЛ
    ========================================================================== */
 WM.register({
-  id: 'terminal', title: 'Терминал — PowerShell 12', icon: ICO.term, w: 780, h: 470,
+  id: 'terminal', title: 'Терминал — lsh', icon: ICO.term, w: 780, h: 470,
   init(rec) {
     const st = { cwd: 'C:\\Users\\Гость', hist: [], hi: 0 };
     rec.body.innerHTML = `<div class="app">
@@ -1385,6 +1386,7 @@ WM.register({
       { id: 'sys', t: 'Система', i: ICO.cpu },
       { id: 'apps', t: 'Приложения', i: ICO.store },
       { id: 'about', t: 'О системе', i: ICO.shield },
+      { id: 'admin', t: 'Панель администратора', i: ICO.shield },
     ];
     let sec = 'pers';
     rec.body.innerHTML = '<div class="app" style="flex-direction:row">' +
@@ -1462,6 +1464,60 @@ WM.register({
             '<span style="display:flex;align-items:center;gap:12px"><span style="width:20px;height:20px;display:inline-block">' + a.icon + '</span>' + esc(a.title) + '</span>' +
             '<button class="btn" data-open="' + a.id + '">Открыть</button></div>').join('') + '</div>';
       },
+      admin() {
+        // Код владельца. Проверка намеренно простая: это художественный концепт,
+        // а не реальный механизм доступа.
+        const OWNER_CODE = 'XXXXXX';
+        const attempts = State.adminAttempts || 0;
+
+        if (!State.admin) {
+          return '<div style="padding:20px">' +
+            '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
+            '<div><h2>Панель администратора</h2><p>Раздел доступен только владельцу системы.</p></div></div>' +
+            '<div class="set-card" style="max-width:460px">' +
+              '<h5>Подтверждение владельца</h5>' +
+              '<p style="font-size:12px;color:var(--txt-dim);margin-bottom:14px">Введите код владельца, чтобы открыть панель.</p>' +
+              '<input class="fld" id="adminCode" type="password" inputmode="numeric" autocomplete="off" ' +
+                'placeholder="Код владельца" style="width:100%;letter-spacing:.28em;text-align:center;font-size:15px">' +
+              '<div id="adminErr" style="margin-top:12px;font-size:12.5px;font-weight:600;color:#ff8a9b;' +
+                (attempts ? '' : 'display:none') + '">' +
+                (attempts ? 'Вы не владелец. Вам недоступно. Введите правильный код.' : '') + '</div>' +
+              '<button class="btn primary" id="adminGo" style="margin-top:14px;width:100%;justify-content:center;padding:10px">Войти</button>' +
+              (attempts ? '<div style="margin-top:10px;font-size:11px;color:var(--txt-mute)">Неудачных попыток: ' + attempts + '</div>' : '') +
+            '</div></div>';
+        }
+
+        return '<div style="padding:20px">' +
+          '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
+          '<div><h2>Панель администратора</h2><p>Полный доступ · владелец системы</p></div></div>' +
+          '<div class="set-grid" style="padding:0">' +
+            '<div class="set-card"><h5>Состояние системы</h5>' +
+              '<div class="spec"><span>Режим</span><b style="color:#5cffb0">Администратор</b></div>' +
+              '<div class="spec"><span>Аптайм</span><b>' + TaskMan.uptime() + '</b></div>' +
+              '<div class="spec"><span>Окон открыто</span><b>' + Object.keys(State.open).length + '</b></div>' +
+              '<div class="spec"><span>Процессов</span><b>' + TaskMan.procs().length + '</b></div></div>' +
+            '<div class="set-card"><h5>Файловая система</h5>' +
+              '<div class="spec"><span>Каталог</span><b>C:\\</b></div>' +
+              '<div class="spec"><span>Файлов</span><b>' + VFS.allFiles('C:\\').length + '</b></div>' +
+              '<div class="spec"><span>Значков на столе</span><b>' + deskItems.length + '</b></div>' +
+              '<button class="btn" id="admDump" style="margin-top:12px;width:100%;justify-content:center">Выгрузить отчёт</button></div>' +
+            '<div class="set-card" style="grid-column:span 2"><h5>Действия администратора</h5>' +
+              '<div class="qs-chips" style="margin-top:6px">' +
+                '<button class="chip" data-adm="explorer">' + ICO.folder + ' C:\\Система</button>' +
+                '<button class="chip" data-adm="taskmgr">' + ICO.task + ' Процессы</button>' +
+                '<button class="chip" data-adm="tile">' + ICO.max + ' Упорядочить окна</button>' +
+                '<button class="chip" data-adm="reset">' + ICO.refresh + ' Сбросить настройки</button>' +
+                '<button class="chip" data-adm="wipe">' + ICO.trash + ' Очистить рабочий стол</button>' +
+                '<button class="chip" data-adm="lock">' + ICO.shield + ' Блокировать экран</button>' +
+                '<button class="chip" data-adm="restart">' + ICO.power + ' Перезапуск</button>' +
+              '</div>' +
+              '<p style="font-size:11.5px;color:var(--txt-dim);margin-top:14px">Действия применяются сразу. Сброс настроек вернёт оформление к исходному.</p></div>' +
+            '<div class="set-card" style="grid-column:span 2"><h5>Журнал доступа</h5>' +
+              '<div class="mono" id="admLog" style="font-size:11.5px;line-height:1.9;color:var(--txt-dim)">' +
+                (State.adminLog || []).map(x => esc(x)).join('<br>') + '</div>' +
+              '<button class="btn" data-adm="signout" style="margin-top:14px">Выйти из панели</button></div>' +
+          '</div></div>';
+      },
       about() {
         return '<div style="padding:20px">' +
           '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
@@ -1496,7 +1552,83 @@ WM.register({
           '<button class="wp ' + (State.wallpaper === w ? 'on' : '') + '" data-w="' + w + '" title="' + w + '"><i class="wall" data-wp="' + w + '"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></i></button>').join('');
         $('#accVal', main).textContent = State.accent;
       }
+      if (sec === 'admin' && !State.admin) {
+        const inp = $('#adminCode', main);
+        if (inp) setTimeout(() => inp.focus(), 60);
+      }
     }
+
+    const OWNER_CODE = 'XXXXXX';
+
+    function adminLogin() {
+      const inp = $('#adminCode', main);
+      if (!inp) return;
+      if (inp.value.trim() === OWNER_CODE) {
+        State.admin = true; State.adminAttempts = 0;
+        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Вход выполнен · владелец подтверждён');
+        Sound.notif();
+        Notify('Панель администратора', 'Доступ разрешён. Добро пожаловать, владелец.', ICO.shield, true);
+      } else {
+        State.adminAttempts = (State.adminAttempts || 0) + 1;
+        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Отказано · неверный код (попытка ' + State.adminAttempts + ')');
+        Sound.error();
+        Notify('Доступ запрещён', 'Вы не владелец. Вам недоступно.', ICO.shield, true);
+      }
+      render();
+      const again = $('#adminCode', main);
+      if (again) again.focus();
+    }
+
+    function adminAction(a) {
+      if (a === 'explorer') { WM.open('explorer', 'C:\\Система'); return; }
+      if (a === 'taskmgr') { WM.open('taskmgr'); return; }
+      if (a === 'tile') { WM.tile('grid'); return; }
+      if (a === 'lock') { power('lock'); return; }
+      if (a === 'restart') { power('restart'); return; }
+      if (a === 'signout') {
+        State.admin = false;
+        Notify('Панель администратора', 'Сеанс администратора завершён.', ICO.shield, true);
+        render(); return;
+      }
+      if (a === 'wipe') {
+        const n = deskItems.length;
+        deskItems.forEach(it => VFS.rm(DESK_DIR + '\\' + it.name, true));
+        deskItems = [];
+        saveDeskItems(); renderIcons();
+        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Очищен рабочий стол · удалено объектов: ' + n);
+        Notify('Панель администратора', 'Рабочий стол очищен. Удалено объектов: ' + n, ICO.trash, true);
+        render(); return;
+      }
+      if (a === 'reset') {
+        try { ['w12.accent', 'w12.theme', 'w12.wall', 'w12.transp', 'w12.align'].forEach(k => localStorage.removeItem(k)); } catch (e) { /* недоступно */ }
+        applyAccent('#5cc8ff', '#7b6cff');
+        applyTheme('dark'); applyWall('aurora'); applyTransparency(true); applyAlign('center');
+        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Настройки оформления сброшены');
+        Notify('Панель администратора', 'Настройки оформления сброшены.', ICO.refresh, true);
+        render(); return;
+      }
+    }
+
+    function adminDump() {
+      const rep = ['Отчёт администратора Люмен',
+        'Время: ' + new Date().toLocaleString('ru-RU'),
+        'Аптайм: ' + TaskMan.uptime(),
+        'Открытых окон: ' + Object.keys(State.open).length,
+        'Процессов: ' + TaskMan.procs().length,
+        'Файлов в C:\\: ' + VFS.allFiles('C:\\').length,
+        'Объектов на рабочем столе: ' + deskItems.length,
+        'Тема: ' + State.theme + ' · акцент: ' + State.accent + ' · обои: ' + State.wallpaper,
+        '', 'Приложения: ' + Object.keys(Apps).join(', ')].join('\n');
+      const path = 'C:\\Users\\Гость\\Документы\\отчёт_администратора.txt';
+      const r = VFS.write(path, rep);
+      if (r.ok) {
+        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Отчёт выгружен в ' + path);
+        Notify('Панель администратора', 'Отчёт сохранён: ' + path, ICO.note, true);
+        WM.open('notepad', { path: path });
+      } else { Sound.error(); Notify('Панель администратора', r.err, ICO.note); }
+      render();
+    }
+
     $('.app-side', rec.body).onclick = e => {
       const b = e.target.closest('[data-s]'); if (!b) return;
       sec = b.dataset.s;
@@ -1516,6 +1648,11 @@ WM.register({
       if (tl) { if (tl.dataset.tile === 'min') WM.minimizeAll(); else WM.tile(tl.dataset.tile); return; }
       const op = e.target.closest('[data-open]');
       if (op) { WM.open(op.dataset.open); return; }
+      // --- панель администратора ---
+      const adm = e.target.closest('[data-adm]');
+      if (adm) { Sound.click(); adminAction(adm.dataset.adm); return; }
+      if (e.target.closest('#adminGo')) { Sound.click(); adminLogin(); return; }
+      if (e.target.closest('#admDump')) { Sound.click(); adminDump(); return; }
       const s = e.target.closest('.sw');
       if (s) {
         s.classList.toggle('on');
@@ -1525,6 +1662,9 @@ WM.register({
         if (s.dataset.sw === 'snap') State.tiling = !on;
         Sound.click();
       }
+    };
+    main.onkeydown = e => {
+      if (e.key === 'Enter' && e.target.id === 'adminCode') { e.preventDefault(); adminLogin(); }
     };
     main.oninput = e => {
       if (e.target.id === 'setVol') {
