@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Люмен — веб-ОС</title>
 <meta name="description" content="Люмен — вымышленная веб-операционная система, работающая в браузере.">
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 
@@ -14,7 +14,7 @@
   <div class="boot-inner">
     <div class="boot-logo">
       <svg class="boot-mark" viewBox="0 0 100 100"><use href="#winLogo"/></svg>
-      <div class="boot-word">Люмен <b>OS</b></div>
+      <div class="boot-word"><span data-sys="name">Люмен</span> <b>OS</b></div>
     </div>
     <div class="boot-bar"><i id="bootBar"></i></div>
     <div class="boot-tip" id="bootTip">Инициализация ядра…</div>
@@ -32,9 +32,9 @@
     <div class="lock-date" id="lockDate">—</div>
   </div>
   <div class="lock-bottom">
-    <div class="avatar" id="lockAvatar">Г</div>
+    <div class="avatar" id="lockAvatar" data-sys="user-initial">Г</div>
     <div>
-      <div class="lock-user">Гость</div>
+      <div class="lock-user" data-sys="user">Гость</div>
       <div class="lock-hint">Нажмите Enter, чтобы войти</div>
     </div>
     <button class="lock-btn" id="lockBtn">Войти →</button>
@@ -75,7 +75,7 @@
     </div>
     <div class="wcard">
       <h4>Лента</h4>
-      <div class="w-news"><div><em>Технологии</em>Люмен получила оконный менеджер «Плексус» с магнитным снапом на 12 зон.</div></div>
+      <div class="w-news"><div><em>Технологии</em><span data-sys="name">Люмен</span> получила оконный менеджер «Плексус» с магнитным снапом на 12 зон.</div></div>
       <div class="w-news"><div><em>Наука</em>Квантовый планировщик задач снизил энергопотребление на 34%.</div></div>
       <div class="w-news"><div><em>Космос</em>Орбитальный релиз ядра люмен-1.4 отложен на один цикл.</div></div>
     </div>
@@ -92,7 +92,7 @@
       <div class="start-grid" id="startGrid"></div>
     </div>
     <div class="start-foot">
-      <div class="start-user"><div class="avatar">Г</div><span>Гость</span></div>
+      <div class="start-user"><div class="avatar" data-sys="user-initial">Г</div><span data-sys="user">Гость</span></div>
       <div class="spacer"></div>
       <button class="icon-btn" id="powerBtn" title="Питание">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/></svg>
@@ -254,6 +254,6 @@
 })();
 </script>
 
-<script src="os.js?v=16"></script>
+<script src="os.js?v=17"></script>
 </body>
 </html>

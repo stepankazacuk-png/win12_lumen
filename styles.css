@@ -309,6 +309,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   border:1px solid var(--stroke);display:flex;align-items:center;gap:7px;transition:.18s}
 .chip:hover{background:rgba(255,255,255,.16)}
 .chip.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(92,200,255,.25)}
+.chip svg{width:15px;height:15px;flex:none}
 .chip i{width:13px;height:13px;border-radius:50%;display:block}
 .qs-foot{display:flex;align-items:center;gap:12px;padding-top:12px;border-top:1px solid var(--stroke)}
 .qs-foot .battery{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
@@ -436,6 +437,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 
 /* Settings */
 .set-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;padding:16px}
+.set-grid.adm{grid-template-columns:repeat(2,minmax(0,1fr));padding:0}
 .set-card{padding:16px;border-radius:var(--r);background:rgba(255,255,255,.055);border:1px solid var(--stroke)}
 .set-card h5{font-size:12.5px;margin-bottom:12px;font-weight:700}
 .swatches{display:flex;gap:9px;flex-wrap:wrap}

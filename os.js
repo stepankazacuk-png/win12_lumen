@@ -139,6 +139,8 @@ const VFS = (() => {
       } },
     } },
   };
+  // Снимок исходного состояния: панель администратора возвращает систему к нему.
+  const pristine = JSON.parse(JSON.stringify(tree));
   const root = () => tree['C:'];
   const split = p => String(p).replace(/\\/g, '/').replace(/^[A-Za-z]:/, '').split('/').filter(Boolean);
   function node(p) {
@@ -210,7 +212,14 @@ const VFS = (() => {
     Object.keys(n.children).forEach(k => allFiles(p + '\\' + k, out));
     return out;
   }
-  return { tree, root, node, norm, split, mkdir, write, read, rm, mv, cp, list, sizeOf, allFiles, nameOf, parentOf };
+  // Возврат файловой системы к исходному состоянию.
+  function restore() {
+    const snap = JSON.parse(JSON.stringify(pristine));
+    Object.keys(tree).forEach(k => delete tree[k]);
+    Object.keys(snap).forEach(k => { tree[k] = snap[k]; });
+    return { ok: true };
+  }
+  return { tree, root, node, norm, split, mkdir, write, read, rm, mv, cp, list, sizeOf, allFiles, nameOf, parentOf, restore };
 })();
 
 /* ============================================================================
@@ -712,10 +721,10 @@ WM.register({
         else print('<span class="r">Процесс не найден: ' + esc(a) + '</span>');
       },
       neofetch() {
-        print(['<span class="p">        ▄▄▄▄▄▄▄▄        </span>  <span class="y">Гость@LUMEN</span>',
+        print(['<span class="p">        ▄▄▄▄▄▄▄▄        </span>  <span class="y">' + SysInfo.get().user + '@' + SysInfo.get().name.toUpperCase() + '</span>',
           '<span class="p">      ▄█████████▄      </span>  ─────────────────────────',
-          '<span class="p">     ███████████████   </span>  ОС:        Люмен 1.4 (сборка 3040)',
-          '<span class="p">     ███  ███  ██████  </span>  Ядро:      люмен-1.4-generic',
+          '<span class="p">     ███████████████   </span>  ОС:        ' + SysInfo.get().name + ' ' + SysInfo.get().version + ' (сборка ' + SysInfo.get().build + ')',
+          '<span class="p">     ███  ███  ██████  </span>  Ядро:      ' + SysInfo.get().kernel + ',',
           '<span class="p">     ███  ███  ██████  </span>  Оболочка:  lsh (веб)',
           '<span class="p">     ███████████████   </span>  Оконный:   Плексус, снап на 12 зон',
           '<span class="p">      ▀█████████▀      </span>  Шрифты:    Manrope / Unbounded',
@@ -733,7 +742,7 @@ WM.register({
       },
       date() { print(esc(new Date().toLocaleString('ru-RU'))); },
       whoami() { print('windows-12\\гость'); },
-      ver() { print('Люмен 1.4, ядро люмен-1.4, сборка 3040'); },
+      ver() { const g = SysInfo.get(); print(g.name + ' ' + g.version + ', ядро ' + g.kernel + ', сборка ' + g.build); },
       clear() { out.innerHTML = ''; },
       exit() { WM.close(rec.id); },
       calc(a) {
@@ -889,6 +898,57 @@ function applyAlign(a) {
 }
 
 /* ============================================================================
+   СВЕДЕНИЯ О СИСТЕМЕ (имя, версия, ядро, сборка, пользователь)
+   Значения можно менять из панели администратора. Всё, что помечено в разметке
+   атрибутом data-sys, обновляется вызовом SysInfo.apply().
+   ========================================================================== */
+const SysInfo = (() => {
+  const DEFAULTS = {
+    name: 'Люмен', version: '1.4', kernel: 'люмен-1.4-generic',
+    build: '3040', user: 'Гость',
+  };
+  const cur = { ...DEFAULTS };
+  const KEY = 'w12.sysinfo';
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const o = JSON.parse(raw);
+        Object.keys(DEFAULTS).forEach(k => { if (typeof o[k] === 'string' && o[k].trim()) cur[k] = o[k].trim(); });
+      }
+    } catch (e) { /* хранилище недоступно */ }
+  }
+  function saveAll() { save(KEY, JSON.stringify(cur)); }
+
+  function apply() {
+    const set = (k, v) => $$('[data-sys="' + k + '"]').forEach(n => { n.textContent = v; });
+    set('name', cur.name);
+    set('namever', cur.name + ' ' + cur.version);
+    set('version', cur.version);
+    set('kernel', cur.kernel);
+    set('build', cur.build);
+    set('user', cur.user);
+    set('user-initial', (cur.user[0] || 'Г').toUpperCase());
+    document.title = cur.name + ' — веб-ОС';
+  }
+
+  function update(patch) {
+    let changed = [];
+    Object.keys(DEFAULTS).forEach(k => {
+      const v = patch[k];
+      if (typeof v === 'string' && v.trim() && v.trim() !== cur[k]) { cur[k] = v.trim().slice(0, 40); changed.push(k); }
+    });
+    if (changed.length) { saveAll(); apply(); }
+    return changed;
+  }
+  function reset() { Object.assign(cur, DEFAULTS); saveAll(); apply(); return DEFAULTS; }
+
+  load();
+  return { get: () => ({ ...cur }), defaults: () => ({ ...DEFAULTS }), update, reset, apply };
+})();
+
+/* ============================================================================
    ДИСПЕТЧЕР ЗАДАЧ (данные)
    ========================================================================== */
 const TaskMan = (() => {
@@ -960,7 +1020,7 @@ WM.register({
         <div class="set-card" style="margin-bottom:12px"><h5>Процессор · люмен-1.4 · 16 ядер</h5>
           <div style="font-family:var(--font-display);font-size:38px;font-weight:300">${clamp(cpu, 1, 99).toFixed(0)}%</div>
           <canvas class="cpu-graph" width="760" height="130" style="width:100%;height:130px;border-radius:12px;background:rgba(0,0,0,.3)"></canvas></div>
-        <div class="set-grid" style="padding:0">
+        <div class="set-grid adm">
           <div class="set-card"><h5>Память</h5><div style="font-size:26px;font-family:var(--font-display);font-weight:300">9.4 / 32 ГБ</div></div>
           <div class="set-card"><h5>Графика · Плексус GPU</h5><div style="font-size:26px;font-family:var(--font-display);font-weight:300">${clamp(cpu * 1.3, 2, 99).toFixed(0)}%</div></div>
           <div class="set-card"><h5>Аптайм</h5><div style="font-size:22px;font-family:var(--font-display);font-weight:300">${TaskMan.uptime()}</div></div>
@@ -1465,64 +1525,14 @@ WM.register({
             '<button class="btn" data-open="' + a.id + '">Открыть</button></div>').join('') + '</div>';
       },
       admin() {
-        // Код владельца. Проверка намеренно простая: это художественный концепт,
-        // а не реальный механизм доступа.
-        const OWNER_CODE = 'XXXXXX';
-        const attempts = State.adminAttempts || 0;
-
-        if (!State.admin) {
-          return '<div style="padding:20px">' +
-            '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
-            '<div><h2>Панель администратора</h2><p>Раздел доступен только владельцу системы.</p></div></div>' +
-            '<div class="set-card" style="max-width:460px">' +
-              '<h5>Подтверждение владельца</h5>' +
-              '<p style="font-size:12px;color:var(--txt-dim);margin-bottom:14px">Введите код владельца, чтобы открыть панель.</p>' +
-              '<input class="fld" id="adminCode" type="password" inputmode="numeric" autocomplete="off" ' +
-                'placeholder="Код владельца" style="width:100%;letter-spacing:.28em;text-align:center;font-size:15px">' +
-              '<div id="adminErr" style="margin-top:12px;font-size:12.5px;font-weight:600;color:#ff8a9b;' +
-                (attempts ? '' : 'display:none') + '">' +
-                (attempts ? 'Вы не владелец. Вам недоступно. Введите правильный код.' : '') + '</div>' +
-              '<button class="btn primary" id="adminGo" style="margin-top:14px;width:100%;justify-content:center;padding:10px">Войти</button>' +
-              (attempts ? '<div style="margin-top:10px;font-size:11px;color:var(--txt-mute)">Неудачных попыток: ' + attempts + '</div>' : '') +
-            '</div></div>';
-        }
-
-        return '<div style="padding:20px">' +
-          '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
-          '<div><h2>Панель администратора</h2><p>Полный доступ · владелец системы</p></div></div>' +
-          '<div class="set-grid" style="padding:0">' +
-            '<div class="set-card"><h5>Состояние системы</h5>' +
-              '<div class="spec"><span>Режим</span><b style="color:#5cffb0">Администратор</b></div>' +
-              '<div class="spec"><span>Аптайм</span><b>' + TaskMan.uptime() + '</b></div>' +
-              '<div class="spec"><span>Окон открыто</span><b>' + Object.keys(State.open).length + '</b></div>' +
-              '<div class="spec"><span>Процессов</span><b>' + TaskMan.procs().length + '</b></div></div>' +
-            '<div class="set-card"><h5>Файловая система</h5>' +
-              '<div class="spec"><span>Каталог</span><b>C:\\</b></div>' +
-              '<div class="spec"><span>Файлов</span><b>' + VFS.allFiles('C:\\').length + '</b></div>' +
-              '<div class="spec"><span>Значков на столе</span><b>' + deskItems.length + '</b></div>' +
-              '<button class="btn" id="admDump" style="margin-top:12px;width:100%;justify-content:center">Выгрузить отчёт</button></div>' +
-            '<div class="set-card" style="grid-column:span 2"><h5>Действия администратора</h5>' +
-              '<div class="qs-chips" style="margin-top:6px">' +
-                '<button class="chip" data-adm="explorer">' + ICO.folder + ' C:\\Система</button>' +
-                '<button class="chip" data-adm="taskmgr">' + ICO.task + ' Процессы</button>' +
-                '<button class="chip" data-adm="tile">' + ICO.max + ' Упорядочить окна</button>' +
-                '<button class="chip" data-adm="reset">' + ICO.refresh + ' Сбросить настройки</button>' +
-                '<button class="chip" data-adm="wipe">' + ICO.trash + ' Очистить рабочий стол</button>' +
-                '<button class="chip" data-adm="lock">' + ICO.shield + ' Блокировать экран</button>' +
-                '<button class="chip" data-adm="restart">' + ICO.power + ' Перезапуск</button>' +
-              '</div>' +
-              '<p style="font-size:11.5px;color:var(--txt-dim);margin-top:14px">Действия применяются сразу. Сброс настроек вернёт оформление к исходному.</p></div>' +
-            '<div class="set-card" style="grid-column:span 2"><h5>Журнал доступа</h5>' +
-              '<div class="mono" id="admLog" style="font-size:11.5px;line-height:1.9;color:var(--txt-dim)">' +
-                (State.adminLog || []).map(x => esc(x)).join('<br>') + '</div>' +
-              '<button class="btn" data-adm="signout" style="margin-top:14px">Выйти из панели</button></div>' +
-          '</div></div>';
+        if (!State.admin) return adminLogin_();
+        return adminConsole_();
       },
       about() {
         return '<div style="padding:20px">' +
           '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
-          '<div><h2>Люмен 1.4</h2><p>Вымышленная веб-операционная система · ядро люмен-1.4, сборка 3040</p></div></div>' +
-          '<div class="set-grid" style="padding:0">' +
+          '<div><h2 data-sys="namever">' + SysInfo.get().name + ' ' + SysInfo.get().version + '</h2><p>Вымышленная веб-операционная система · ядро <span data-sys="kernel">' + SysInfo.get().kernel + '</span>, сборка <span data-sys="build">' + SysInfo.get().build + '</span></p></div></div>' +
+          '<div class="set-grid adm">' +
           '<div class="set-card"><h5>Характеристики</h5>' +
             '<div class="spec"><span>Устройство</span><b>ORBITAL-12</b></div>' +
             '<div class="spec"><span>Процессор</span><b>Nt12 Core X · 16 ядер</b></div>' +
@@ -1531,7 +1541,7 @@ WM.register({
             '<div class="spec"><span>Накопитель</span><b>512 ГБ NVMe</b></div>' +
             '<div class="spec"><span>Аптайм</span><b>' + TaskMan.uptime() + '</b></div></div>' +
           '<div class="set-card"><h5>Сведения</h5>' +
-            '<div class="spec"><span>Ядро</span><b>люмен-1.4-generic</b></div>' +
+            '<div class="spec"><span>Ядро</span><b data-sys="kernel">' + SysInfo.get().kernel + '</b></div>' +
             '<div class="spec"><span>Оконный менеджер</span><b>Плексус</b></div>' +
             '<div class="spec"><span>Платформа</span><b>' + esc((navigator.platform || 'web').slice(0, 22)) + '</b></div>' +
             '<div class="spec"><span>Обновления</span><b>Актуально</b></div>' +
@@ -1559,18 +1569,169 @@ WM.register({
     }
 
     const OWNER_CODE = 'XXXXXX';
+    let admTab = 'overview';
+
+    const log_ = m => (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] ' + m);
+
+    function adminLogin_() {
+      const attempts = State.adminAttempts || 0;
+      return '<div style="padding:20px">' +
+        '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
+        '<div><h2>Панель администратора</h2><p>Раздел доступен только владельцу системы.</p></div></div>' +
+        '<div class="set-card" style="max-width:460px">' +
+          '<h5>Подтверждение владельца</h5>' +
+          '<p style="font-size:12px;color:var(--txt-dim);margin-bottom:14px">Введите код владельца, чтобы открыть панель.</p>' +
+          '<input class="fld" id="adminCode" type="password" inputmode="numeric" autocomplete="off" ' +
+            'placeholder="Код владельца" style="width:100%;letter-spacing:.28em;text-align:center;font-size:15px">' +
+          '<div id="adminErr" style="margin-top:12px;font-size:12.5px;font-weight:600;color:#ff8a9b;' +
+            (attempts ? '' : 'display:none') + '">' +
+            (attempts ? 'Вы не владелец. Вам недоступно. Введите правильный код.' : '') + '</div>' +
+          '<button class="btn primary" id="adminGo" style="margin-top:14px;width:100%;justify-content:center;padding:10px">Войти</button>' +
+          (attempts ? '<div style="margin-top:10px;font-size:11px;color:var(--txt-mute)">Неудачных попыток: ' + attempts + '</div>' : '') +
+        '</div></div>';
+    }
+
+    const ADM_TABS = [
+      { id: 'overview', t: 'Обзор' },
+      { id: 'identity', t: 'Имя системы' },
+      { id: 'windows', t: 'Окна' },
+      { id: 'look', t: 'Оформление' },
+      { id: 'files', t: 'Файлы' },
+      { id: 'power', t: 'Питание' },
+      { id: 'log', t: 'Журнал' },
+    ];
+
+    function adminConsole_() {
+      const g = SysInfo.get();
+      const tabs = '<div class="qs-chips" style="margin-bottom:18px">' +
+        ADM_TABS.map(t => '<button class="chip ' + (t.id === admTab ? 'on' : '') + '" data-admtab="' + t.id + '">' + t.t + '</button>').join('') + '</div>';
+      return '<div style="padding:20px">' +
+        '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
+        '<div><h2>Панель администратора</h2><p>Полный доступ · владелец системы</p></div></div>' +
+        tabs + ADM_PAGES[admTab](g) + '</div>';
+    }
+
+    const ADM_PAGES = {
+      overview(g) {
+        return '<div class="set-grid adm">' +
+          '<div class="set-card"><h5>Состояние</h5>' +
+            '<div class="spec"><span>Режим</span><b style="color:#5cffb0">Администратор</b></div>' +
+            '<div class="spec"><span>Система</span><b>' + esc(g.name) + ' ' + esc(g.version) + '</b></div>' +
+            '<div class="spec"><span>Ядро</span><b>' + esc(g.kernel) + '</b></div>' +
+            '<div class="spec"><span>Пользователь</span><b>' + esc(g.user) + '</b></div>' +
+            '<div class="spec"><span>Аптайм</span><b>' + TaskMan.uptime() + '</b></div></div>' +
+          '<div class="set-card"><h5>Нагрузка</h5>' +
+            '<div class="spec"><span>Окон открыто</span><b>' + Object.keys(State.open).length + '</b></div>' +
+            '<div class="spec"><span>Процессов</span><b>' + TaskMan.procs().length + '</b></div>' +
+            '<div class="spec"><span>Файлов в C:\\</span><b>' + VFS.allFiles('C:\\').length + '</b></div>' +
+            '<div class="spec"><span>Значков на столе</span><b>' + deskItems.length + '</b></div></div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Быстрые действия</h5>' +
+            '<div class="qs-chips" style="margin-top:6px">' +
+              '<button class="chip" data-adm="explorer">' + ICO.folder + ' C:\\Система</button>' +
+              '<button class="chip" data-adm="taskmgr">' + ICO.task + ' Процессы</button>' +
+              '<button class="chip" data-adm="terminal">' + ICO.term + ' Терминал</button>' +
+              '<button class="chip" data-adm="closeall">' + ICO.x + ' Закрыть все окна</button>' +
+              '<button class="chip" data-adm="dump">' + ICO.note + ' Выгрузить отчёт</button>' +
+              '<button class="chip" data-adm="lock">' + ICO.shield + ' Блокировать</button>' +
+            '</div></div></div>';
+      },
+      identity(g) {
+        const f = (k, label, hint) => '<label style="display:block;margin-bottom:12px">' +
+          '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">' + label + '</span>' +
+          '<input class="fld" id="adm_' + k + '" value="' + esc(g[k]) + '" style="width:100%">' +
+          (hint ? '<span style="display:block;font-size:10.5px;color:var(--txt-mute);margin-top:4px">' + hint + '</span>' : '') + '</label>';
+        return '<div class="set-grid adm">' +
+          '<div class="set-card"><h5>Название системы</h5>' +
+            f('name', 'Имя системы', 'Видно на загрузке, в «О системе», neofetch и в заголовке вкладки.') +
+            f('version', 'Версия', 'Например: 1.4 или 2.0') +
+            '<div style="display:flex;gap:8px;margin-top:8px">' +
+              '<button class="btn primary" data-adm="saveidentity" style="flex:1;justify-content:center">Применить</button>' +
+              '<button class="btn" data-adm="resetidentity">Вернуть исходное</button></div></div>' +
+          '<div class="set-card"><h5>Ядро, сборка, пользователь</h5>' +
+            f('kernel', 'Имя ядра', 'Например: люмен-1.4-generic') +
+            f('build', 'Номер сборки') +
+            f('user', 'Имя пользователя', 'Показывается на экране входа и в «Пуске».') +
+          '</div></div>';
+      },
+      windows() {
+        const keys = Object.keys(State.open);
+        const rows = keys.length ? keys.map(k => {
+          const r = State.open[k];
+          return '<div class="set-row" style="border-bottom:1px solid var(--stroke)">' +
+            '<span style="display:flex;align-items:center;gap:10px"><span style="width:18px;height:18px;display:inline-block">' + (r.def.icon || '') + '</span>' + esc(r.def.title) + '</span>' +
+            '<span style="display:flex;gap:6px">' +
+              '<button class="btn" data-adm="focuswin" data-id="' + esc(k) + '">Показать</button>' +
+              '<button class="btn" data-adm="closewin" data-id="' + esc(k) + '">Закрыть</button>' +
+            '</span></div>';
+        }).join('') : '<p style="font-size:12px;color:var(--txt-dim)">Открытых окон нет.</p>';
+        return '<div class="set-grid adm">' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Открытые окна · ' + keys.length + '</h5>' + rows + '</div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Массовые действия</h5><div class="qs-chips" style="margin-top:6px">' +
+            '<button class="chip" data-adm="tile">' + ICO.max + ' Сетка</button>' +
+            '<button class="chip" data-adm="cascade">' + ICO.copy + ' Каскад</button>' +
+            '<button class="chip" data-adm="minall">' + ICO.min + ' Свернуть все</button>' +
+            '<button class="chip" data-adm="closeall">' + ICO.x + ' Закрыть все</button>' +
+          '</div></div></div>';
+      },
+      look() {
+        return '<div class="set-grid adm">' +
+          '<div class="set-card"><h5>Тема</h5><div class="qs-chips">' +
+            '<button class="chip ' + (State.theme === 'dark' ? 'on' : '') + '" data-adm="theme" data-v="dark">' + ICO.moon + ' Тёмная</button>' +
+            '<button class="chip ' + (State.theme === 'light' ? 'on' : '') + '" data-adm="theme" data-v="light">' + ICO.sun + ' Светлая</button></div>' +
+            '<div class="set-row" style="margin-top:12px"><span>Прозрачность</span><div class="sw ' + (State.transparency ? 'on' : '') + '" data-admsw="transp"></div></div></div>' +
+          '<div class="set-card"><h5>Акцентный цвет</h5><div class="swatches">' +
+            ACCENTS.map(a => '<button class="swatch ' + (a.a === State.accent ? 'on' : '') + '" data-adm="accent" data-a="' + a.a + '" data-b="' + a.b + '" style="background:linear-gradient(140deg,' + a.a + ',' + a.b + ')" title="' + a.t + '"></button>').join('') +
+            '</div></div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Фон рабочего стола</h5><div class="wp-list">' +
+            WALLS.map(w => '<button class="wp ' + (State.wallpaper === w ? 'on' : '') + '" data-adm="wall" data-v="' + w + '" title="' + w + '"><i class="wall" data-wp="' + w + '"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></i></button>').join('') +
+            '</div></div>' +
+          '<div class="set-card"><h5>Яркость</h5><div class="qs-row"><input type="range" id="admBri" min="30" max="100" value="' + State.brightness + '"><b class="mono" style="font-size:11px">' + State.brightness + '</b></div></div>' +
+          '<div class="set-card"><h5>Громкость</h5><div class="qs-row"><input type="range" id="admVol" min="0" max="100" value="' + State.volume + '"><b class="mono" style="font-size:11px">' + State.volume + '</b></div></div>' +
+          '</div>';
+      },
+      files() {
+        return '<div class="set-grid adm">' +
+          '<div class="set-card"><h5>Файловая система</h5>' +
+            '<div class="spec"><span>Каталог</span><b>C:\\</b></div>' +
+            '<div class="spec"><span>Файлов</span><b>' + VFS.allFiles('C:\\').length + '</b></div>' +
+            '<div class="spec"><span>Значков на столе</span><b>' + deskItems.length + '</b></div>' +
+            '<button class="btn" data-adm="dump" style="margin-top:12px;width:100%;justify-content:center">' + ICO.note + ' Выгрузить отчёт</button></div>' +
+          '<div class="set-card"><h5>Обслуживание</h5>' +
+            '<button class="btn" data-adm="wipe" style="width:100%;justify-content:center;margin-bottom:8px">' + ICO.trash + ' Очистить рабочий стол</button>' +
+            '<button class="btn" data-adm="resetfs" style="width:100%;justify-content:center">' + ICO.refresh + ' Восстановить файловую систему</button>' +
+            '<p style="font-size:11px;color:var(--txt-mute);margin-top:10px">Восстановление вернёт ФС к исходному состоянию: созданные файлы и папки будут удалены.</p></div>' +
+          '</div>';
+      },
+      power() {
+        return '<div class="set-grid adm">' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Управление питанием</h5><div class="qs-chips" style="margin-top:6px">' +
+            '<button class="chip" data-adm="lock">' + ICO.shield + ' Блокировать экран</button>' +
+            '<button class="chip" data-adm="sleep">' + ICO.moon + ' Спящий режим</button>' +
+            '<button class="chip" data-adm="restart">' + ICO.power + ' Перезапуск</button>' +
+            '<button class="chip" data-adm="shutdown">' + ICO.power + ' Выключить</button>' +
+            '<button class="chip" data-adm="signout">' + ICO.x + ' Выйти из панели</button>' +
+          '</div><p style="font-size:11.5px;color:var(--txt-dim);margin-top:14px">Перезапуск и выключение перезагружают страницу: виртуальная ФС сбрасывается к исходной, настройки сохраняются.</p></div></div>';
+      },
+      log() {
+        const rows = (State.adminLog || []).slice().reverse();
+        return '<div class="set-grid adm"><div class="set-card" style="grid-column:span 2"><h5>Журнал доступа и действий</h5>' +
+          '<div class="mono" id="admLog" style="font-size:11.5px;line-height:1.9;color:var(--txt-dim);max-height:300px;overflow:auto">' +
+          (rows.length ? rows.map(x => esc(x)).join('<br>') : 'Пока пусто.') + '</div>' +
+          '<button class="btn" data-adm="clearlog" style="margin-top:14px">Очистить журнал</button></div></div>';
+      },
+    };
 
     function adminLogin() {
       const inp = $('#adminCode', main);
       if (!inp) return;
       if (inp.value.trim() === OWNER_CODE) {
         State.admin = true; State.adminAttempts = 0;
-        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Вход выполнен · владелец подтверждён');
+        log_('Вход выполнен · владелец подтверждён');
         Sound.notif();
         Notify('Панель администратора', 'Доступ разрешён. Добро пожаловать, владелец.', ICO.shield, true);
       } else {
         State.adminAttempts = (State.adminAttempts || 0) + 1;
-        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Отказано · неверный код (попытка ' + State.adminAttempts + ')');
+        log_('Отказано · неверный код (попытка ' + State.adminAttempts + ')');
         Sound.error();
         Notify('Доступ запрещён', 'Вы не владелец. Вам недоступно.', ICO.shield, true);
       }
@@ -1579,38 +1740,62 @@ WM.register({
       if (again) again.focus();
     }
 
-    function adminAction(a) {
-      if (a === 'explorer') { WM.open('explorer', 'C:\\Система'); return; }
-      if (a === 'taskmgr') { WM.open('taskmgr'); return; }
-      if (a === 'tile') { WM.tile('grid'); return; }
-      if (a === 'lock') { power('lock'); return; }
-      if (a === 'restart') { power('restart'); return; }
-      if (a === 'signout') {
-        State.admin = false;
-        Notify('Панель администратора', 'Сеанс администратора завершён.', ICO.shield, true);
-        render(); return;
-      }
-      if (a === 'wipe') {
-        const n = deskItems.length;
-        deskItems.forEach(it => VFS.rm(DESK_DIR + '\\' + it.name, true));
-        deskItems = [];
-        saveDeskItems(); renderIcons();
-        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Очищен рабочий стол · удалено объектов: ' + n);
-        Notify('Панель администратора', 'Рабочий стол очищен. Удалено объектов: ' + n, ICO.trash, true);
-        render(); return;
-      }
-      if (a === 'reset') {
-        try { ['w12.accent', 'w12.theme', 'w12.wall', 'w12.transp', 'w12.align'].forEach(k => localStorage.removeItem(k)); } catch (e) { /* недоступно */ }
-        applyAccent('#5cc8ff', '#7b6cff');
-        applyTheme('dark'); applyWall('aurora'); applyTransparency(true); applyAlign('center');
-        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Настройки оформления сброшены');
-        Notify('Панель администратора', 'Настройки оформления сброшены.', ICO.refresh, true);
-        render(); return;
+    function saveIdentity() {
+      const val = k => { const e = $('#adm_' + k, main); return e ? e.value : ''; };
+      const changed = SysInfo.update({ name: val('name'), version: val('version'), kernel: val('kernel'), build: val('build'), user: val('user') });
+      if (!changed.length) { Notify('Панель администратора', 'Изменений нет.', ICO.shield, true); return; }
+      log_('Изменено: ' + changed.join(', '));
+      Notify('Панель администратора', 'Сохранено: ' + SysInfo.get().name + ' ' + SysInfo.get().version, ICO.shield, true);
+      render();
+    }
+
+    function wipeDesktop() {
+      const n = deskItems.length;
+      deskItems.forEach(it => VFS.rm(DESK_DIR + '\\' + it.name, true));
+      deskItems = []; saveDeskItems(); renderIcons();
+      log_('Рабочий стол очищен · удалено объектов: ' + n);
+      Notify('Панель администратора', 'Рабочий стол очищен. Удалено объектов: ' + n, ICO.trash, true);
+      render();
+    }
+
+    function adminAction(el) {
+      const a = el.dataset.adm, v = el.dataset.v;
+      switch (a) {
+        case 'explorer': WM.open('explorer', 'C:\\Система'); return;
+        case 'taskmgr': WM.open('taskmgr'); return;
+        case 'terminal': WM.open('terminal'); return;
+        case 'tile': WM.tile('grid'); log_('Окна упорядочены: сетка'); render(); return;
+        case 'cascade': WM.tile('cascade'); log_('Окна упорядочены: каскад'); render(); return;
+        case 'minall': WM.minimizeAll(); log_('Все окна свёрнуты'); render(); return;
+        case 'closeall': Object.keys(State.open).forEach(k => WM.close(k)); log_('Закрыты все окна'); render(); return;
+        case 'focuswin': WM.unminimize(el.dataset.id); WM.focus(el.dataset.id); return;
+        case 'closewin': WM.close(el.dataset.id); log_('Окно закрыто: ' + el.dataset.id); render(); return;
+        case 'theme': applyTheme(v); log_('Тема: ' + v); render(); return;
+        case 'wall': applyWall(v); log_('Обои: ' + v); render(); return;
+        case 'accent': applyAccent(el.dataset.a, el.dataset.b); log_('Акцент: ' + el.dataset.a); render(); return;
+        case 'saveidentity': saveIdentity(); return;
+        case 'resetidentity': SysInfo.reset(); log_('Имя системы сброшено к исходному'); Notify('Панель администратора', 'Имя системы сброшено к исходному.', ICO.refresh, true); render(); return;
+        case 'dump': adminDump(); return;
+        case 'wipe': wipeDesktop(); return;
+        case 'resetfs':
+          VFS.restore(); deskItems = []; saveDeskItems(); renderIcons();
+          log_('Файловая система восстановлена');
+          Notify('Панель администратора', 'Файловая система восстановлена.', ICO.refresh, true);
+          render(); return;
+        case 'clearlog': State.adminLog = []; render(); return;
+        case 'lock': power('lock'); return;
+        case 'sleep': power('sleep'); return;
+        case 'restart': power('restart'); return;
+        case 'shutdown': power('shutdown'); return;
+        case 'signout': State.admin = false; log_('Выход из панели'); Notify('Панель администратора', 'Сеанс администратора завершён.', ICO.shield, true); render(); return;
       }
     }
 
     function adminDump() {
-      const rep = ['Отчёт администратора Люмен',
+      const g = SysInfo.get();
+      const rep = ['Отчёт администратора ' + g.name,
+        'Система: ' + g.name + ' ' + g.version + ', ядро ' + g.kernel + ', сборка ' + g.build,
+        'Пользователь: ' + g.user,
         'Время: ' + new Date().toLocaleString('ru-RU'),
         'Аптайм: ' + TaskMan.uptime(),
         'Открытых окон: ' + Object.keys(State.open).length,
@@ -1622,7 +1807,7 @@ WM.register({
       const path = 'C:\\Users\\Гость\\Документы\\отчёт_администратора.txt';
       const r = VFS.write(path, rep);
       if (r.ok) {
-        (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] Отчёт выгружен в ' + path);
+        log_('Отчёт выгружен в ' + path);
         Notify('Панель администратора', 'Отчёт сохранён: ' + path, ICO.note, true);
         WM.open('notepad', { path: path });
       } else { Sound.error(); Notify('Панель администратора', r.err, ICO.note); }
@@ -1636,6 +1821,19 @@ WM.register({
       render();
     };
     main.onclick = e => {
+      // --- панель администратора ---
+      const at = e.target.closest('[data-admtab]');
+      if (at) { Sound.click(); admTab = at.dataset.admtab; render(); return; }
+      const asw = e.target.closest('[data-admsw]');
+      if (asw) {
+        asw.classList.toggle('on');
+        const on = asw.classList.contains('on');
+        if (asw.dataset.admsw === 'transp') { applyTransparency(on); log_('Прозрачность: ' + (on ? 'вкл' : 'выкл')); }
+        Sound.click(); render(); return;
+      }
+      const adm = e.target.closest('[data-adm]');
+      if (adm) { Sound.click(); adminAction(adm); return; }
+      if (e.target.closest('#adminGo')) { Sound.click(); adminLogin(); return; }
       const sw = e.target.closest('.swatch');
       if (sw) { applyAccent(sw.dataset.a, sw.dataset.b); render(); return; }
       const wp = e.target.closest('.wp');
@@ -1648,11 +1846,6 @@ WM.register({
       if (tl) { if (tl.dataset.tile === 'min') WM.minimizeAll(); else WM.tile(tl.dataset.tile); return; }
       const op = e.target.closest('[data-open]');
       if (op) { WM.open(op.dataset.open); return; }
-      // --- панель администратора ---
-      const adm = e.target.closest('[data-adm]');
-      if (adm) { Sound.click(); adminAction(adm.dataset.adm); return; }
-      if (e.target.closest('#adminGo')) { Sound.click(); adminLogin(); return; }
-      if (e.target.closest('#admDump')) { Sound.click(); adminDump(); return; }
       const s = e.target.closest('.sw');
       if (s) {
         s.classList.toggle('on');
@@ -1665,8 +1858,11 @@ WM.register({
     };
     main.onkeydown = e => {
       if (e.key === 'Enter' && e.target.id === 'adminCode') { e.preventDefault(); adminLogin(); }
+      if (e.key === 'Enter' && e.target.id && e.target.id.indexOf('adm_') === 0) { e.preventDefault(); saveIdentity(); }
     };
     main.oninput = e => {
+      if (e.target.id === 'admBri') { applyBrightness(+e.target.value); const b = e.target.nextElementSibling; if (b) b.textContent = e.target.value; }
+      if (e.target.id === 'admVol') { State.volume = +e.target.value; const b = e.target.nextElementSibling; if (b) b.textContent = e.target.value; $('#vol').value = State.volume; }
       if (e.target.id === 'setVol') {
         State.volume = +e.target.value;
         $('#vol').value = State.volume;
@@ -2240,6 +2436,7 @@ function bootSequence() {
 function init() {
   loadPrefs();
   loadDeskItems();
+  SysInfo.apply();
   renderIcons();
   renderTaskbar();
   Quick.build();
@@ -2297,7 +2494,7 @@ function init() {
   setInterval(tickClock, 1000);
   setInterval(() => { if (Widgets.isOpen()) Widgets.stats(); }, 2200);
 
-  setTimeout(() => Notify('Люмен', 'Система готова. Нажмите Win или откройте «Пуск», чтобы начать.', ICO.sparkle), 2600);
+  setTimeout(() => Notify(SysInfo.get().name, 'Система готова. Нажмите Win или откройте «Пуск», чтобы начать.', ICO.sparkle), 2600);
   setTimeout(() => Notify('Совет', 'Потяните окно к краю экрана — Люмен предложит зону прилипания. Win+←/→ — половина экрана.', ICO.max, true), 7200);
 
   bootSequence();
