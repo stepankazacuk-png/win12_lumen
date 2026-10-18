@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Запуск Windows 12 на локальном статическом сервере.
+# Запуск «Люмена» вместе с прокси для браузера.
 # Использование: ./serve.sh [порт]   (по умолчанию 12000)
 set -u
 
 PORT="${1:-12000}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG="/tmp/windows12-$PORT.log"
+LOG="/tmp/lumen-$PORT.log"
 
 # Уже слушает — ничего не делаем.
 if curl -s -o /dev/null --max-time 2 "http://localhost:$PORT/index.html"; then
@@ -14,13 +14,13 @@ if curl -s -o /dev/null --max-time 2 "http://localhost:$PORT/index.html"; then
 fi
 
 cd "$DIR" || exit 1
-nohup python3 -m http.server "$PORT" --bind 0.0.0.0 > "$LOG" 2>&1 &
+nohup python3 server.py "$PORT" > "$LOG" 2>&1 &
 disown
 
-for _ in $(seq 1 20); do
+for _ in $(seq 1 24); do
   sleep 0.25
   if curl -s -o /dev/null --max-time 2 "http://localhost:$PORT/index.html"; then
-    echo "Запущено: http://localhost:$PORT/  (pid $!, лог $LOG)"
+    echo "Запущено: http://localhost:$PORT/  (прокси /__proxy, лог $LOG)"
     exit 0
   fi
 done

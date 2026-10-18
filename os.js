@@ -31,6 +31,7 @@ const ICO = {
   store: G('<path d="M4 8h16l-1.2 12a1 1 0 0 1-1 .9H6.2a1 1 0 0 1-1-.9L4 8z"/><path d="M8.5 8V6a3.5 3.5 0 1 1 7 0v2"/>'),
   shield: G('<path d="M12 2l8 3.5v6c0 5-3.4 9-8 10.5C7.4 20.5 4 16.5 4 11.5v-6L12 2z"/><path d="M9 12l2 2 4-4"/>'),
   globe: G('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/>'),
+  link: G('<path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/>'),
   game: G('<path d="M7 8h10a5 5 0 0 1 4.7 6.7l-.6 1.8a2.2 2.2 0 0 1-3.9.7L15.6 15H8.4l-1.6 2.2a2.2 2.2 0 0 1-3.9-.7l-.6-1.8A5 5 0 0 1 7 8z"/><path d="M8 10.5v2M7 11.5h2"/><circle cx="16" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="17.6" cy="13" r=".9" fill="currentColor" stroke="none"/>'),
   star: G('<path d="M12 3.6l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z"/>'),
   lock: G('<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/>'),
@@ -127,8 +128,8 @@ const VFS = (() => {
           'Игры': { type: 'dir', children: {
             'Змейка.exe': { type: 'file', ext: 'game', content: 'Змейка' },
             'Тетрис.exe': { type: 'file', ext: 'game', content: 'Тетрис' },
-            'Пятнашки.exe': { type: 'file', ext: 'game', content: 'Пятнашки' },
-            'Сапёр.exe': { type: 'file', ext: 'game', content: 'Сапёр' },
+            'Понг.exe': { type: 'file', ext: 'game', content: 'Понг' },
+            'Арканоид.exe': { type: 'file', ext: 'game', content: 'Арканоид' },
             '2048.exe': { type: 'file', ext: 'game', content: '2048' },
           } },
         } },
@@ -1379,7 +1380,7 @@ WM.register({
   init(rec) {
     const ITEMS = [
       { n: 'Браузер', d: 'Настоящие сайты из интернета', i: ICO.globe, app: 'browser' },
-      { n: 'Игры', d: 'Пять игр в одной папке', i: ICO.game, app: 'games' },
+      { n: 'Игры', d: 'Змейка, Тетрис, Понг, Арканоид, 2048', i: ICO.game, app: 'games' },
       { n: 'Orbit Mail', d: 'Почтовый клиент', i: ICO.mail, app: 'mail' },
       { n: 'Defender 12', d: 'Защита в реальном времени', i: ICO.shield, app: 'security' },
       { n: 'Photos', d: 'Галерея и обои', i: ICO.photos, app: 'photos' },
@@ -1410,115 +1411,140 @@ WM.register({
 
 /* ============================================================================
    ПРИЛОЖЕНИЕ: ИГРЫ
+   Каждая игра: init(host) -> { frame(dt), key(k), restart(), help, pad }
+   pad — список кнопок на экране: { k: клавиша, t: подпись, w: ширина }
    ========================================================================== */
 const Games = (() => {
-  const cv = () => { const c = document.createElement('canvas'); return c; };
+  const cv = (w, h) => {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h; c.className = 'g-canvas';
+    return c;
+  };
+  // roundRect есть не везде — рисуем сами.
+  const rr = (x, y, w, h, r) => {
+    if (x.roundRect) { x.beginPath(); x.roundRect(y[0], y[1], w, h, r); x.fill(); return; }
+    x.beginPath();
+    x.moveTo(y[0] + r, y[1]);
+    x.arcTo(y[0] + w, y[1], y[0] + w, y[1] + h, r);
+    x.arcTo(y[0] + w, y[1] + h, y[0], y[1] + h, r);
+    x.arcTo(y[0], y[1] + h, y[0], y[1], r);
+    x.arcTo(y[0], y[1], y[0] + w, y[1], r);
+    x.closePath(); x.fill();
+  };
+  const PAD_DIRS = [
+    { k: 'ArrowLeft', t: '←' }, { k: 'ArrowUp', t: '↑' },
+    { k: 'ArrowDown', t: '↓' }, { k: 'ArrowRight', t: '→' },
+  ];
 
-  /* --- Змейка --- */
+  /* ------------------------------ ЗМЕЙКА ---------------------------------- */
   const Snake = {
-    name: 'Змейка', icon: ICO.game, hint: 'Стрелки или WASD — есть. P — пауза.',
+    name: 'Змейка',
+    hint: 'Собирайте еду и растите. Управление: кнопки на экране, стрелки или WASD.',
+    pad: [{ k: 'ArrowLeft', t: '←' }, { k: 'ArrowUp', t: '↑' }, { k: 'ArrowDown', t: '↓' }, { k: 'ArrowRight', t: '→' },
+          { k: 'p', t: 'Пауза', w: 'wide' }],
     init(host) {
-      const S = 17, N = 20, size = S * N;
-      const c = cv(); c.width = size; c.height = size; c.className = 'g-canvas';
-      host.appendChild(c);
+      const S = 18, N = 18, size = S * N;
+      const c = cv(size, size); host.appendChild(c);
       const x = c.getContext('2d');
-      let snake, dir, nd, food, score, best = +(localStorage.getItem('lumen.snake.best') || 0), dead, tick, acc, paused;
-      function reset() {
-        snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
-        dir = { x: 1, y: 0 }; nd = dir; food = place(); score = 0; dead = false; acc = 0; paused = false; tick = 0;
-        host.dispatchEvent(new CustomEvent('gscore', { detail: { score: 0, best: best, label: 'Счёт', bestLabel: 'Рекорд' } }));
-      }
+      let snake, dir, nd, food, score, best = +(localStorage.getItem('lumen.snake.best') || 0), dead, acc, paused, hi = 0;
+      const score_ = () => host.dispatchEvent(new CustomEvent('gscore', {
+        detail: { score: score, best: best, label: 'Счёт', bestLabel: 'Рекорд' } }));
       function place() {
         let p;
         do { p = { x: (Math.random() * N) | 0, y: (Math.random() * N) | 0 }; }
         while (snake.some(s => s.x === p.x && s.y === p.y));
         return p;
       }
+      function reset() {
+        snake = [{ x: 8, y: 9 }, { x: 7, y: 9 }, { x: 6, y: 9 }];
+        dir = { x: 1, y: 0 }; nd = dir; food = place();
+        score = 0; dead = false; acc = 0; paused = false; score_();
+      }
       function step() {
-        if (dead || paused) return;
         dir = nd;
         const h = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
         if (h.x < 0 || h.y < 0 || h.x >= N || h.y >= N || snake.some(s => s.x === h.x && s.y === h.y)) {
           dead = true;
           if (score > best) { best = score; localStorage.setItem('lumen.snake.best', String(best)); }
-          Sound.error();
-          host.dispatchEvent(new CustomEvent('gscore', { detail: { score: score, best: best, label: 'Счёт', bestLabel: 'Рекорд' } }));
-          return;
+          Sound.error(); score_(); return;
         }
         snake.unshift(h);
         if (h.x === food.x && h.y === food.y) {
-          score += 10; food = place(); Sound.notif();
-          host.dispatchEvent(new CustomEvent('gscore', { detail: { score: score, best: best, label: 'Счёт', bestLabel: 'Рекорд' } }));
+          score += 10; food = place(); Sound.notif(); score_();
         } else snake.pop();
       }
       function draw() {
         x.fillStyle = '#0b1220'; x.fillRect(0, 0, size, size);
-        x.strokeStyle = 'rgba(255,255,255,.045)'; x.lineWidth = 1;
+        x.strokeStyle = 'rgba(255,255,255,.05)'; x.lineWidth = 1;
         for (let i = 1; i < N; i++) {
           x.beginPath(); x.moveTo(i * S, 0); x.lineTo(i * S, size); x.stroke();
           x.beginPath(); x.moveTo(0, i * S); x.lineTo(size, i * S); x.stroke();
         }
         x.fillStyle = '#ff5c9e';
-        x.beginPath(); x.arc(food.x * S + S / 2, food.y * S + S / 2, S / 2 - 2, 0, 7); x.fill();
+        x.beginPath(); x.arc(food.x * S + S / 2, food.y * S + S / 2, S / 2 - 3, 0, 7); x.fill();
         snake.forEach((s, i) => {
-          x.fillStyle = i === 0 ? '#5cc8ff' : 'rgba(92,200,255,' + (0.9 - i / (snake.length + 6)) + ')';
-          x.beginPath(); x.roundRect(s.x * S + 1.5, s.y * S + 1.5, S - 3, S - 3, 4); x.fill();
+          x.fillStyle = i === 0 ? '#5cc8ff' : 'rgba(92,200,255,' + Math.max(.35, .9 - i / (snake.length + 6)) + ')';
+          rr(x, [s.x * S + 2, s.y * S + 2], S - 4, S - 4, 5);
         });
         if (dead) {
-          x.fillStyle = 'rgba(4,8,18,.78)'; x.fillRect(0, 0, size, size);
+          x.fillStyle = 'rgba(4,8,18,.8)'; x.fillRect(0, 0, size, size);
           x.fillStyle = '#fff'; x.textAlign = 'center';
-          x.font = '600 22px system-ui'; x.fillText('Игра окончена', size / 2, size / 2 - 6);
-          x.font = '400 14px system-ui'; x.fillStyle = 'rgba(255,255,255,.7)';
-          x.fillText('Счёт ' + score + ' · Пробел — заново', size / 2, size / 2 + 22);
-        } else if (paused) {
-          x.fillStyle = 'rgba(4,8,18,.6)'; x.fillRect(0, 0, size, size);
-          x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = '600 20px system-ui';
-          x.fillText('Пауза', size / 2, size / 2);
+          x.font = '600 21px system-ui'; x.fillText('Игра окончена', size / 2, size / 2 - 4);
+          x.font = '400 13px system-ui'; x.fillStyle = 'rgba(255,255,255,.72)';
+          x.fillText('Счёт ' + score + ' · нажмите «Заново»', size / 2, size / 2 + 22);
         }
       }
       function frame(dt) {
         acc += dt;
-        const speed = 120 - Math.min(60, score * 0.6);
+        // Скорость растёт мягко: от 190 мс до 95 мс.
+        const speed = Math.max(95, 190 - score * 1.6);
         if (acc >= speed) { acc = 0; step(); }
         draw();
       }
       reset();
       return {
-        frame,
+        frame, restart: reset,
         key(k) {
-          if (dead && (k === ' ' || k === 'Enter')) { reset(); return true; }
-          if (k === 'p' || k === 'P' || k === 'з' || k === 'З') { paused = !paused; return true; }
-          const m = { ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 }, ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
-                      w: { x: 0, y: -1 }, s: { x: 0, y: 1 }, a: { x: -1, y: 0 }, d: { x: 1, y: 0 },
-                      ц: { x: 0, y: -1 }, ы: { x: 0, y: 1 }, ф: { x: -1, y: 0 }, в: { x: 1, y: 0 } }[k];
-          if (m && !(m.x === -dir.x && m.y === -dir.y)) { nd = m; return true; }
+          if (dead) return [' ', 'Enter'].includes(k);
+          if (k === 'p' || k === 'P' || k === 'з') { paused = !paused; return true; }
+          const m = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+                      w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+                      ц: [0, -1], ы: [0, 1], ф: [-1, 0], в: [1, 0] }[k];
+          if (m && !(m[0] === -dir.x && m[1] === -dir.y)) { nd = { x: m[0], y: m[1] }; return true; }
           return false;
         },
-        restart: reset,
-        help: 'Стрелки или WASD — движение. P — пауза. Пробел — заново.',
+        help: 'Собирайте еду и растите. Кнопки на экране, стрелки или WASD.',
       };
     },
   };
 
-  /* --- Тетрис --- */
+  /* ------------------------------ ТЕТРИС ---------------------------------- */
   const Tetris = {
-    name: 'Тетрис', icon: ICO.game, hint: 'Стрелки — движение, ↑ — поворот, пробел — сброс.',
+    name: 'Тетрис',
+    hint: 'Складывайте фигуры в линии. Они исчезают, когда линия заполнена.',
+    pad: [{ k: 'ArrowLeft', t: '←' }, { k: 'ArrowUp', t: 'Поворот' }, { k: 'ArrowRight', t: '→' },
+          { k: 'ArrowDown', t: '↓' }, { k: ' ', t: 'Сброс', w: 'wide' }],
     init(host) {
-      const C = 26, COLS = 10, ROWS = 20;
-      const c = cv(); c.width = C * COLS; c.height = C * ROWS; c.className = 'g-canvas';
-      host.appendChild(c);
+      const C = 26, COLS = 10, ROWS = 18;
+      const c = cv(C * COLS, C * ROWS); host.appendChild(c);
       const x = c.getContext('2d');
       const SHAPES = [
         [[1, 1, 1, 1]], [[1, 1], [1, 1]], [[0, 1, 0], [1, 1, 1]],
         [[1, 0, 0], [1, 1, 1]], [[0, 0, 1], [1, 1, 1]], [[0, 1, 1], [1, 1, 0]], [[1, 1, 0], [0, 1, 1]],
       ];
       const COLORS = ['#5cc8ff', '#ffd166', '#c792ea', '#4f8cff', '#ff9f68', '#4ee1a0', '#ff5c9e'];
-      let grid, piece, px, py, pi, score, lines, dead, acc, drop, best = +(localStorage.getItem('lumen.tetris.best') || 0);
+      let grid, piece, px, py, pi, score, lines, dead, acc, best = +(localStorage.getItem('lumen.tetris.best') || 0);
+      const board = () => host.dispatchEvent(new CustomEvent('gscore', {
+        detail: { score: score, best: best, label: 'Очки', bestLabel: 'Рекорд', extra: 'Линий: ' + lines } }));
       function newPiece() {
         pi = (Math.random() * SHAPES.length) | 0;
         piece = SHAPES[pi].map(r => r.slice());
         px = ((COLS - piece[0].length) / 2) | 0; py = 0;
-        if (hit(px, py, piece)) { dead = true; if (score > best) { best = score; localStorage.setItem('lumen.tetris.best', String(best)); } Sound.error(); scoreboard(); }
+        if (hit(px, py, piece)) {
+          dead = true;
+          if (score > best) { best = score; localStorage.setItem('lumen.tetris.best', String(best)); }
+          Sound.error(); board();
+        }
       }
       function hit(nx, ny, sh) {
         for (let y = 0; y < sh.length; y++) for (let xx = 0; xx < sh[y].length; xx++) {
@@ -1529,9 +1555,6 @@ const Games = (() => {
         }
         return false;
       }
-      function merge() {
-        piece.forEach((row, y) => row.forEach((v, xx) => { if (v) grid[py + y][px + xx] = pi + 1; }));
-      }
       function clear() {
         let n = 0;
         for (let y = ROWS - 1; y >= 0; y--) {
@@ -1539,196 +1562,293 @@ const Games = (() => {
         }
         if (n) { lines += n; score += [0, 40, 100, 300, 1200][n] || 1200; Sound.notif(); }
       }
-      function rotate() {
-        const r = piece[0].map((_, i) => piece.map(row => row[i]).reverse());
-        for (const k of [0, -1, 1, -2, 2]) if (!hit(px + k, py, r)) { piece = r; px += k; return; }
-      }
       function drop1() {
         if (!hit(px, py + 1, piece)) { py++; return false; }
-        merge(); clear(); newPiece(); scoreboard(); return true;
-      }
-      function scoreboard() {
-        host.dispatchEvent(new CustomEvent('gscore', { detail: { score: score, best: best, label: 'Очки', bestLabel: 'Рекорд', extra: 'Линий: ' + lines } }));
+        piece.forEach((row, y) => row.forEach((v, xx) => { if (v) grid[py + y][px + xx] = pi + 1; }));
+        clear(); newPiece(); board(); return true;
       }
       function reset() {
         grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
-        score = 0; lines = 0; dead = false; acc = 0; drop = 800;
-        newPiece(); scoreboard();
+        score = 0; lines = 0; dead = false; acc = 0; newPiece(); board();
       }
       function draw() {
         x.fillStyle = '#0b1220'; x.fillRect(0, 0, c.width, c.height);
         x.strokeStyle = 'rgba(255,255,255,.05)';
         for (let i = 1; i < COLS; i++) { x.beginPath(); x.moveTo(i * C, 0); x.lineTo(i * C, c.height); x.stroke(); }
         for (let i = 1; i < ROWS; i++) { x.beginPath(); x.moveTo(0, i * C); x.lineTo(c.width, i * C); x.stroke(); }
-        const cell = (gx, gy, col) => {
-          x.fillStyle = col; x.beginPath(); x.roundRect(gx * C + 1.5, gy * C + 1.5, C - 3, C - 3, 5); x.fill();
-        };
+        const cell = (gx, gy, col) => { x.fillStyle = col; rr(x, [gx * C + 2, gy * C + 2], C - 4, C - 4, 5); };
         grid.forEach((row, y) => row.forEach((v, gx) => { if (v) cell(gx, y, COLORS[v - 1]); }));
         piece.forEach((row, y) => row.forEach((v, xx) => { if (v && py + y >= 0) cell(px + xx, py + y, COLORS[pi]); }));
         if (dead) {
-          x.fillStyle = 'rgba(4,8,18,.8)'; x.fillRect(0, 0, c.width, c.height);
+          x.fillStyle = 'rgba(4,8,18,.82)'; x.fillRect(0, 0, c.width, c.height);
           x.fillStyle = '#fff'; x.textAlign = 'center';
-          x.font = '600 22px system-ui'; x.fillText('Игра окончена', c.width / 2, c.height / 2 - 6);
-          x.font = '400 14px system-ui'; x.fillStyle = 'rgba(255,255,255,.7)';
-          x.fillText('Очки ' + score + ' · Пробел — заново', c.width / 2, c.height / 2 + 22);
+          x.font = '600 21px system-ui'; x.fillText('Игра окончена', c.width / 2, c.height / 2 - 4);
+          x.font = '400 13px system-ui'; x.fillStyle = 'rgba(255,255,255,.72)';
+          x.fillText('Очки ' + score + ' · нажмите «Заново»', c.width / 2, c.height / 2 + 22);
         }
       }
       function frame(dt) {
-        if (!dead) { acc += dt; if (acc >= drop) { acc = 0; drop1(); } }
+        if (!dead) { acc += dt; if (acc >= 750) { acc = 0; drop1(); } }
         draw();
       }
       reset();
       return {
-        frame,
+        frame, restart: reset,
         key(k) {
-          if (dead && (k === ' ' || k === 'Enter')) { reset(); return true; }
-          if (dead) return false;
+          if (dead) return [' ', 'Enter'].includes(k);
           if (k === 'ArrowLeft') { if (!hit(px - 1, py, piece)) px--; return true; }
           if (k === 'ArrowRight') { if (!hit(px + 1, py, piece)) px++; return true; }
-          if (k === 'ArrowDown') { if (!drop1()) { score++; scoreboard(); } return true; }
-          if (k === 'ArrowUp' || k === 'w') { rotate(); return true; }
+          if (k === 'ArrowDown') { if (!drop1()) { score++; board(); } return true; }
+          if (k === 'ArrowUp' || k === 'w') {
+            const r = piece[0].map((_, i) => piece.map(row => row[i]).reverse());
+            for (const s of [0, -1, 1, -2, 2]) if (!hit(px + s, py, r)) { piece = r; px += s; break; }
+            return true;
+          }
           if (k === ' ') { while (!drop1()); acc = 0; return true; }
           return false;
         },
-        restart: reset,
-        help: '← → — движение, ↑ — поворот, ↓ — ускорить, пробел — сбросить вниз.',
+        help: 'Складывайте фигуры в линии. Стрелка вверх — поворот, пробел — сбросить вниз.',
       };
     },
   };
 
-  /* --- Пятнашки --- */
-  const Puzzle = {
-    name: 'Пятнашки', icon: ICO.game, hint: 'Клик по плитке рядом с пустой клеткой.',
+  /* ------------------------------- ПОНГ ----------------------------------- */
+  const Pong = {
+    name: 'Понг',
+    hint: 'Отбивайте мяч ракеткой слева. Соперник играет справа. До 7 очков.',
+    pad: [{ k: 'ArrowUp', t: '↑' }, { k: 'ArrowDown', t: '↓' }],
     init(host) {
-      const wrap = el('div', 'g-puzzle');
-      host.appendChild(wrap);
-      let tiles, moves, best = +(localStorage.getItem('lumen.puzzle.best') || 0);
-      function board() {
-        wrap.innerHTML = tiles.map((v, i) =>
-          v === 0 ? '<button class="g-tile empty" data-i="' + i + '"></button>'
-                  : '<button class="g-tile" data-i="' + i + '">' + v + '</button>').join('');
-        const ok = tiles.every((v, i) => v === (i + 1) % 16);
-        host.dispatchEvent(new CustomEvent('gscore', { detail: { score: moves, best: best, label: 'Ходы', bestLabel: 'Лучший результат', extra: ok ? 'Собрано!' : 'Осталось собрать' } }));
-        if (ok && moves > 0) {
-          if (!best || moves < best) { best = moves; localStorage.setItem('lumen.puzzle.best', String(best)); }
-          Sound.open(); Notify('Пятнашки', 'Собрано за ' + moves + ' ходов!', ICO.game, true);
-        }
-      }
-      function shuffle() {
-        tiles = [...Array(15).keys()].map(i => i + 1).concat(0);
-        let blank = 15;
-        for (let i = 0; i < 600; i++) {
-          const y = (blank / 4) | 0, x = blank % 4;
-          const opts = [];
-          if (x > 0) opts.push(blank - 1); if (x < 3) opts.push(blank + 1);
-          if (y > 0) opts.push(blank - 4); if (y < 3) opts.push(blank + 4);
-          const pick = opts[(Math.random() * opts.length) | 0];
-          tiles[blank] = tiles[pick]; tiles[pick] = 0; blank = pick;
-        }
-        moves = 0; board();
-      }
-      wrap.onclick = e => {
-        const b = e.target.closest('.g-tile'); if (!b) return;
-        const i = +b.dataset.i, blank = tiles.indexOf(0);
-        const iy = (i / 4) | 0, ix = i % 4, by = (blank / 4) | 0, bx = blank % 4;
-        if (Math.abs(iy - by) + Math.abs(ix - bx) !== 1) return;
-        tiles[blank] = tiles[i]; tiles[i] = 0; moves++; Sound.click(); board();
-      };
-      shuffle();
-      return { key: () => false, restart: shuffle, help: 'Соберите числа по порядку, пустая клетка — в правом нижнем углу.' };
-    },
-  };
-
-  /* --- Сапёр --- */
-  const Mines = {
-    name: 'Сапёр', icon: ICO.game, hint: 'Левый клик — открыть, правый — флажок.',
-    init(host) {
-      const R = 12, C = 12, M = 20;
-      const wrap = el('div', 'g-mines');
-      host.appendChild(wrap);
-      let cells, started, dead, flags, opened;
+      const W = 620, H = 400;
+      const c = cv(W, H); host.appendChild(c);
+      const x = c.getContext('2d');
+      let py, ay, ball, score, ai, dead, won, vy = 0, best = +(localStorage.getItem('lumen.pong.best') || 0);
+      const H1 = 74, PW = 11;
+      const board = () => host.dispatchEvent(new CustomEvent('gscore', {
+        detail: { score: score, best: best, label: 'Ваши очки', bestLabel: 'Лучшая серия', extra: 'Соперник: ' + ai } }));
       function reset() {
-        cells = Array.from({ length: R * C }, () => ({ mine: false, open: false, flag: false, n: 0 }));
-        started = false; dead = false; flags = 0; opened = 0;
-        draw();
+        py = H / 2 - H1 / 2; ay = H / 2 - H1 / 2;
+        ball = { x: W / 2, y: H / 2, dx: 4.6, dy: 2.4, r: 8 };
+        score = 0; ai = 0; dead = false; won = false; vy = 0; board();
       }
-      function neighbors(i) {
-        const y = (i / C) | 0, x = i % C, out = [];
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const ny = y + dy, nx = x + dx;
-          if (ny >= 0 && ny < R && nx >= 0 && nx < C) out.push(ny * C + nx);
+      function goal(who) {
+        if (who === 'me') { score++; Sound.notif(); } else { ai++; Sound.error(); }
+        board();
+        if (score >= 7 || ai >= 7) {
+          dead = true;
+          if (score > best) { best = score; localStorage.setItem('lumen.pong.best', String(best)); }
+          board();
         }
-        return out;
+        ball.x = W / 2; ball.y = H / 2;
+        ball.dx = (who === 'me' ? -1 : 1) * 4.6; ball.dy = (Math.random() * 4 - 2);
       }
-      function plant(first) {
-        const banned = new Set([first, ...neighbors(first)]);
-        let placed = 0;
-        while (placed < M) {
-          const i = (Math.random() * R * C) | 0;
-          if (cells[i].mine || banned.has(i)) continue;
-          cells[i].mine = true; placed++;
+      function frame(dt) {
+        const k = Math.min(3, dt / 16.7);
+        if (!dead) {
+          py = Math.max(0, Math.min(H - H1, py + vy * 6 * k));
+          // Соперник подстраивается, но с отставанием — его можно обыграть.
+          const target = ball.y - H1 / 2;
+          ay += Math.max(-4.4, Math.min(4.4, (target - ay) * 0.11)) * k;
+          ay = Math.max(0, Math.min(H - H1, ay));
+          ball.x += ball.dx * k; ball.y += ball.dy * k;
+          if (ball.y < ball.r || ball.y > H - ball.r) { ball.dy *= -1; ball.y = Math.max(ball.r, Math.min(H - ball.r, ball.y)); }
+          if (ball.x - ball.r < 26 + PW && ball.y > py && ball.y < py + H1 && ball.dx < 0) {
+            ball.dx = Math.abs(ball.dx) * 1.03;
+            ball.dy += ((ball.y - (py + H1 / 2)) / (H1 / 2)) * 2.2;
+            Sound.click();
+          }
+          if (ball.x + ball.r > W - 26 - PW && ball.y > ay && ball.y < ay + H1 && ball.dx > 0) {
+            ball.dx = -Math.abs(ball.dx);
+            ball.dy += ((ball.y - (ay + H1 / 2)) / (H1 / 2)) * 1.4;
+          }
+          if (ball.x < -20) goal('ai');
+          if (ball.x > W + 20) goal('me');
         }
-        cells.forEach((c, i) => { c.n = neighbors(i).filter(j => cells[j].mine).length; });
-        started = true;
+        x.fillStyle = '#0b1220'; x.fillRect(0, 0, W, H);
+        x.strokeStyle = 'rgba(255,255,255,.12)'; x.setLineDash([7, 9]);
+        x.beginPath(); x.moveTo(W / 2, 0); x.lineTo(W / 2, H); x.stroke(); x.setLineDash([]);
+        x.fillStyle = 'rgba(255,255,255,.5)'; x.font = '600 34px system-ui'; x.textAlign = 'center';
+        x.fillText(String(score), W / 2 - 40, 44);
+        x.fillText(String(ai), W / 2 + 40, 44);
+        x.fillStyle = '#5cc8ff'; rr(x, [26, py], PW, H1, 6);
+        x.fillStyle = '#ff5c9e'; rr(x, [W - 26 - PW, ay], PW, H1, 6);
+        x.fillStyle = '#fff'; x.beginPath(); x.arc(ball.x, ball.y, ball.r, 0, 7); x.fill();
+        if (dead) {
+          x.fillStyle = 'rgba(4,8,18,.82)'; x.fillRect(0, 0, W, H);
+          x.fillStyle = '#fff'; x.font = '600 22px system-ui';
+          x.fillText(score > ai ? 'Вы победили!' : 'Соперник победил', W / 2, H / 2 - 4);
+          x.font = '400 13px system-ui'; x.fillStyle = 'rgba(255,255,255,.72)';
+          x.fillText('Счёт ' + score + ':' + ai + ' · нажмите «Заново»', W / 2, H / 2 + 22);
+        }
       }
-      function open(i) {
-        const c = cells[i];
-        if (c.open || c.flag || dead) return;
-        if (!started) plant(i);
-        c.open = true; opened++;
-        if (c.mine) { dead = true; Sound.error(); cells.forEach(x => { if (x.mine) x.open = true; }); draw(); Notify('Сапёр', 'Вы наступили на мину.', ICO.game); return; }
-        if (c.n === 0) neighbors(i).forEach(j => { if (!cells[j].open && !cells[j].mine) open(j); });
-      }
-      function score() {
-        host.dispatchEvent(new CustomEvent('gscore', { detail: { score: flags, best: M, label: 'Флажков', bestLabel: 'Всего мин', extra: 'Открыто: ' + opened } }));
-      }
-      function draw() {
-        wrap.innerHTML = cells.map((c, i) => {
-          let cls = 'g-cell', txt = '';
-          if (c.open && c.mine) { cls += ' boom'; txt = '✳'; }
-          else if (c.open) { cls += ' open n' + c.n; txt = c.n ? String(c.n) : ''; }
-          else if (c.flag) { cls += ' flag'; txt = '⚑'; }
-          return '<button class="' + cls + '" data-i="' + i + '">' + txt + '</button>';
-        }).join('');
-        score();
-        if (opened === R * C - M) { Sound.open(); Notify('Сапёр', 'Поле очищено!', ICO.game, true); }
-      }
-      wrap.onclick = e => { const b = e.target.closest('.g-cell'); if (!b) return; Sound.click(); open(+b.dataset.i); draw(); };
-      wrap.oncontextmenu = e => {
-        const b = e.target.closest('.g-cell'); if (!b) return;
-        e.preventDefault();
-        const c = cells[+b.dataset.i];
-        if (!c.open && !dead) { c.flag = !c.flag; flags += c.flag ? 1 : -1; Sound.click(); draw(); }
+      // Ракетка слушается мыши над полем.
+      c.onmousemove = e => {
+        const r = c.getBoundingClientRect();
+        py = Math.max(0, Math.min(H - H1, (e.clientY - r.top) * (H / r.height) - H1 / 2));
       };
       reset();
-      return { key: () => false, restart: reset, help: 'Найдите все мины. Цифра показывает число мин рядом.' };
+      return {
+        frame, restart: reset,
+        key(k) {
+          if (dead) return [' ', 'Enter'].includes(k);
+          if (k === 'ArrowUp' || k === 'w' || k === 'ц') { vy = -1; return true; }
+          if (k === 'ArrowDown' || k === 's' || k === 'ы') { vy = 1; return true; }
+          return false;
+        },
+        keyup(k) {
+          if (['ArrowUp', 'ArrowDown', 'w', 's', 'ц', 'ы'].includes(k)) { vy = 0; return true; }
+          return false;
+        },
+        help: 'Отбивайте мяч ракеткой слева. Можно водить мышью или кнопками ↑ ↓. До 7 очков.',
+      };
     },
   };
 
-  /* --- 2048 --- */
-  const G2048 = {
-    name: '2048', icon: ICO.game, hint: 'Стрелки — сдвиг. Цель — плитка 2048.',
+  /* ----------------------------- АРКАНОИД --------------------------------- */
+  const Arkanoid = {
+    name: 'Арканоид',
+    hint: 'Разбейте мячом все кирпичи. Три попытки.',
+    pad: [{ k: 'ArrowLeft', t: '←' }, { k: 'ArrowRight', t: '→' }, { k: ' ', t: 'Запуск', w: 'wide' }],
     init(host) {
-      const wrap = el('div', 'g-2048');
-      host.appendChild(wrap);
+      const W = 600, H = 420, PAD_W = 96, PAD_H = 12;
+      const c = cv(W, H); host.appendChild(c);
+      const x = c.getContext('2d');
+      const ROWS = 5, COLS = 9, BW = 56, BH = 18, TOP = 54, LEFT = 24;
+      const ROW_COLORS = ['#ff5c9e', '#c792ea', '#4f8cff', '#4ee1a0', '#ffd166'];
+      let bricks, ball, px, lives, score, dead, launched, vx = 0, best = +(localStorage.getItem('lumen.ark.best') || 0);
+      const board = () => host.dispatchEvent(new CustomEvent('gscore', {
+        detail: { score: score, best: best, label: 'Очки', bestLabel: 'Рекорд', extra: 'Жизни: ' + lives } }));
+      function reset() {
+        bricks = [];
+        for (let r = 0; r < ROWS; r++) for (let q = 0; q < COLS; q++) bricks.push({ x: LEFT + q * (BW + 4), y: TOP + r * (BH + 6), on: true, col: ROW_COLORS[r] });
+        px = W / 2 - PAD_W / 2; lives = 3; score = 0; dead = false; launched = false; vx = 0;
+        ball = { x: W / 2, y: H - 46, dx: 3.6, dy: -4.2, r: 7 };
+        board();
+      }
+      function lose() {
+        lives--; launched = false; Sound.error();
+        ball = { x: px + PAD_W / 2, y: H - 46, dx: 3.6, dy: -4.2, r: 7 };
+        if (lives <= 0) {
+          dead = true;
+          if (score > best) { best = score; localStorage.setItem('lumen.ark.best', String(best)); }
+        }
+        board();
+      }
+      function frame(dt) {
+        const k = Math.min(3, dt / 16.7);
+        if (!dead) {
+          px = Math.max(0, Math.min(W - PAD_W, px + vx * 7.4 * k));
+          if (!launched) { ball.x = px + PAD_W / 2; ball.y = H - 46; }
+          else {
+            ball.x += ball.dx * k; ball.y += ball.dy * k;
+            if (ball.x < ball.r) { ball.dx = Math.abs(ball.dx); ball.x = ball.r; }
+            if (ball.x > W - ball.r) { ball.dx = -Math.abs(ball.dx); ball.x = W - ball.r; }
+            if (ball.y < ball.r) { ball.dy = Math.abs(ball.dy); ball.y = ball.r; }
+            if (ball.y > H - 40 - ball.r && ball.y < H - 28 && ball.x > px && ball.x < px + PAD_W && ball.dy > 0) {
+              ball.dy = -Math.abs(ball.dy);
+              ball.dx += ((ball.x - (px + PAD_W / 2)) / (PAD_W / 2)) * 2;
+              Sound.click();
+            }
+            if (ball.y > H + 20) lose();
+            for (const b of bricks) {
+              if (!b.on) continue;
+              if (ball.x > b.x - ball.r && ball.x < b.x + BW + ball.r &&
+                  ball.y > b.y - ball.r && ball.y < b.y + BH + ball.r) {
+                b.on = false; score += 10; Sound.notif();
+                if (Math.abs(ball.x - (b.x + BW / 2)) / (BW / 2) > Math.abs(ball.y - (b.y + BH / 2)) / (BH / 2)) ball.dx *= -1;
+                else ball.dy *= -1;
+                board();
+                break;
+              }
+            }
+            if (bricks.every(b => !b.on)) {
+              dead = true;
+              if (score > best) { best = score; localStorage.setItem('lumen.ark.best', String(best)); }
+              Sound.open(); board();
+            }
+          }
+        }
+        x.fillStyle = '#0b1220'; x.fillRect(0, 0, W, H);
+        bricks.forEach(b => { if (b.on) { x.fillStyle = b.col; rr(x, [b.x, b.y], BW, BH, 5); } });
+        x.fillStyle = '#5cc8ff'; rr(x, [px, H - 34], PAD_W, PAD_H, 6);
+        x.fillStyle = '#fff'; x.beginPath(); x.arc(ball.x, ball.y, ball.r, 0, 7); x.fill();
+        x.fillStyle = 'rgba(255,255,255,.55)'; x.font = '600 13px system-ui'; x.textAlign = 'left';
+        x.fillText('Очки: ' + score, 24, 30);
+        x.textAlign = 'right'; x.fillText('Жизни: ' + Math.max(0, lives), W - 24, 30);
+        if (!launched && !dead) {
+          x.textAlign = 'center'; x.fillStyle = 'rgba(255,255,255,.75)'; x.font = '400 13px system-ui';
+          x.fillText('Пробел или кнопка «Запуск» — отправить мяч', W / 2, H - 62);
+        }
+        if (dead) {
+          x.fillStyle = 'rgba(4,8,18,.82)'; x.fillRect(0, 0, W, H);
+          x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = '600 22px system-ui';
+          x.fillText(lives > 0 ? 'Все кирпичи разбиты!' : 'Игра окончена', W / 2, H / 2 - 4);
+          x.font = '400 13px system-ui'; x.fillStyle = 'rgba(255,255,255,.72)';
+          x.fillText('Очки ' + score + ' · нажмите «Заново»', W / 2, H / 2 + 22);
+        }
+      }
+      c.onmousemove = e => {
+        const r = c.getBoundingClientRect();
+        px = Math.max(0, Math.min(W - PAD_W, (e.clientX - r.left) * (W / r.width) - PAD_W / 2));
+      };
+      reset();
+      return {
+        frame, restart: reset,
+        key(k) {
+          if (dead) return [' ', 'Enter'].includes(k);
+          if (k === ' ') { launched = true; return true; }
+          if (k === 'ArrowLeft' || k === 'a' || k === 'ф') { vx = -1; return true; }
+          if (k === 'ArrowRight' || k === 'd' || k === 'в') { vx = 1; return true; }
+          return false;
+        },
+        keyup(k) {
+          if (['ArrowLeft', 'ArrowRight', 'a', 'd', 'ф', 'в'].includes(k)) { vx = 0; return true; }
+          return false;
+        },
+        help: 'Разбейте все кирпичи. Ракетка слушается мыши и кнопок ← →. Пробел — запуск мяча.',
+      };
+    },
+  };
+
+  /* ------------------------------- 2048 ----------------------------------- */
+  const G2048 = {
+    name: '2048',
+    hint: 'Сдвигайте плитки. Одинаковые числа складываются. Цель — плитка 2048.',
+    pad: PAD_DIRS,
+    init(host) {
+      const wrap = el('div', 'g-2048'); host.appendChild(wrap);
       let g, score, best = +(localStorage.getItem('lumen.g2048.best') || 0), dead, won;
+      const board = () => host.dispatchEvent(new CustomEvent('gscore', {
+        detail: { score: score, best: best, label: 'Очки', bestLabel: 'Рекорд', extra: dead ? 'Ходов нет' : (won ? 'Цель достигнута' : 'Соберите 2048') } }));
       function reset() {
         g = Array.from({ length: 4 }, () => new Array(4).fill(0));
         score = 0; dead = false; won = false; add(); add(); draw();
       }
       function add() {
         const free = [];
-        g.forEach((row, y) => row.forEach((v, x) => { if (!v) free.push([y, x]); }));
+        g.forEach((row, y) => row.forEach((v, q) => { if (!v) free.push([y, q]); }));
         if (!free.length) return;
-        const [y, x] = free[(Math.random() * free.length) | 0];
-        g[y][x] = Math.random() < 0.9 ? 2 : 4;
+        const [y, q] = free[(Math.random() * free.length) | 0];
+        g[y][q] = Math.random() < 0.9 ? 2 : 4;
       }
       function slide(row) {
         const r = row.filter(v => v);
-        for (let i = 0; i < r.length - 1; i++) if (r[i] === r[i + 1]) { r[i] *= 2; score += r[i]; if (r[i] === 2048 && !won) { won = true; Sound.open(); Notify('2048', 'Плитка 2048 собрана!', ICO.game, true); } r.splice(i + 1, 1); }
+        for (let i = 0; i < r.length - 1; i++) {
+          if (r[i] === r[i + 1]) {
+            r[i] *= 2; score += r[i];
+            if (r[i] === 2048 && !won) { won = true; Sound.open(); Notify('2048', 'Плитка 2048 собрана!', ICO.game, true); }
+            r.splice(i + 1, 1);
+          }
+        }
         while (r.length < 4) r.push(0);
         return r;
+      }
+      function canMove() {
+        for (let y = 0; y < 4; y++) for (let q = 0; q < 4; q++) {
+          if (!g[y][q]) return true;
+          if (q < 3 && g[y][q] === g[y][q + 1]) return true;
+          if (y < 3 && g[y][q] === g[y + 1][q]) return true;
+        }
+        return false;
       }
       function move(d) {
         if (dead) return;
@@ -1736,75 +1856,79 @@ const Games = (() => {
         if (d === 'left') g = g.map(slide);
         if (d === 'right') g = g.map(r => slide(r.slice().reverse()).reverse());
         if (d === 'up' || d === 'down') {
-          for (let x = 0; x < 4; x++) {
-            let col = [0, 1, 2, 3].map(y => g[y][x]);
-            if (d === 'down') col = slide(col.reverse()).reverse(); else col = slide(col);
-            for (let y = 0; y < 4; y++) g[y][x] = col[y];
+          for (let q = 0; q < 4; q++) {
+            let col = [0, 1, 2, 3].map(y => g[y][q]);
+            col = d === 'down' ? slide(col.reverse()).reverse() : slide(col);
+            for (let y = 0; y < 4; y++) g[y][q] = col[y];
           }
         }
         if (JSON.stringify(g) !== before) { add(); Sound.click(); }
-        if (!canMove()) { dead = true; if (score > best) { best = score; localStorage.setItem('lumen.g2048.best', String(best)); } Sound.error(); }
-        draw();
-      }
-      function canMove() {
-        for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-          if (!g[y][x]) return true;
-          if (x < 3 && g[y][x] === g[y][x + 1]) return true;
-          if (y < 3 && g[y][x] === g[y + 1][x]) return true;
+        if (!canMove()) {
+          dead = true;
+          if (score > best) { best = score; localStorage.setItem('lumen.g2048.best', String(best)); }
+          Sound.error();
         }
-        return false;
+        draw();
       }
       function draw() {
         wrap.innerHTML = '<div class="g-grid2048">' + g.flat().map(v =>
           '<div class="g-t2048 v' + (v > 2048 ? 'big' : v) + '">' + (v || '') + '</div>').join('') + '</div>';
-        host.dispatchEvent(new CustomEvent('gscore', { detail: { score: score, best: best, label: 'Очки', bestLabel: 'Рекорд', extra: dead ? 'Ходов нет' : (won ? 'Цель достигнута' : 'Соберите 2048') } }));
+        board();
       }
       reset();
       return {
+        restart: reset,
         key(k) {
-          if (dead && (k === ' ' || k === 'Enter')) { reset(); return true; }
+          if (dead) return [' ', 'Enter'].includes(k);
           const m = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[k];
           if (m) { move(m); return true; }
           return false;
         },
-        restart: reset,
-        help: 'Стрелки — сдвиг всех плиток. Одинаковые плитки складываются.',
+        help: 'Сдвигайте плитки стрелками. Одинаковые числа складываются. Цель — 2048.',
       };
     },
   };
 
-  const LIST = [Snake, Tetris, Puzzle, Mines, G2048];
+  const LIST = [Snake, Tetris, Pong, Arkanoid, G2048];
   return { LIST, byName: n => LIST.find(g => g.name === n) };
 })();
 
 WM.register({
-  id: 'games', title: 'Игры', icon: ICO.game, w: 900, h: 640,
+  id: 'games', title: 'Игры', icon: ICO.game, w: 940, h: 690,
   init(rec, arg) {
-    let cur = null, game = null, raf = 0, last = 0, running = false;
+    let game = null, raf = 0, last = 0, running = false, paused = false, cur = null;
     rec.body.innerHTML = `<div class="app g-wrap">
       <div class="app-bar">
         <b style="font-size:13px">Игры</b>
         <span class="g-menu"></span>
         <span style="flex:1"></span>
         <span class="g-score" id="gScore"></span>
-        <button class="btn" data-g="restart" title="Начать заново">${ICO.refresh}</button>
-        <button class="btn" data-g="pause" title="Пауза">${ICO.pause}</button>
+        <button class="btn" data-g="restart">${ICO.refresh}<span style="margin-left:6px">Заново</span></button>
+        <button class="btn" data-g="pause" id="gPause">${ICO.pause}<span style="margin-left:6px">Пауза</span></button>
       </div>
       <div class="g-help" id="gHelp"></div>
-      <div class="g-stage" id="gStage" tabindex="0"></div>
+      <div class="g-stage" id="gStage"></div>
+      <div class="g-pad" id="gPad"></div>
     </div>`;
     const stage = $('#gStage', rec.body);
     const help = $('#gHelp', rec.body);
     const scoreEl = $('#gScore', rec.body);
     const menu = $('.g-menu', rec.body);
+    const pad = $('#gPad', rec.body);
+    const pauseBtn = $('#gPause', rec.body);
 
     menu.innerHTML = Games.LIST.map(g => '<button class="chip" data-gn="' + esc(g.name) + '">' + esc(g.name) + '</button>').join('');
+
+    // Подписка одна на всё окно: игры шлют счёт событием gscore на .g-stage.
+    stage.addEventListener('gscore', e => setScore(e.detail));
 
     function stop() { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
     function loop(ts) {
       if (!running) return;
-      const dt = Math.min(60, ts - last || 16); last = ts;
-      if (game && game.frame) game.frame(dt);
+      const dt = Math.min(64, ts - last || 16); last = ts;
+      // Игра идёт только когда окно активно — так система не тормозит.
+      const active = State.active === rec.id;
+      if (game && game.frame && !paused && active) game.frame(dt);
       raf = requestAnimationFrame(loop);
     }
     function setScore(d) {
@@ -1812,37 +1936,79 @@ WM.register({
         (d.best != null ? ' · ' + esc(d.bestLabel) + ': <b>' + d.best + '</b>' : '') +
         (d.extra ? ' · ' + esc(d.extra) : '');
     }
+    function setPaused(v) {
+      paused = v;
+      pauseBtn.classList.toggle('on', paused);
+      $('span', pauseBtn).textContent = paused ? 'Продолжить' : 'Пауза';
+      stage.classList.toggle('paused', paused);
+    }
+    function press(k) {
+      if (!game || !game.key) return;
+      if (game.key(k) && k === 'p') { /* пауза самой игры */ }
+    }
     function start(name) {
       const def = Games.byName(name); if (!def) return;
-      stop(); stage.innerHTML = ''; stage.scrollTop = 0;
-      cur = name;
+      stop(); stage.innerHTML = ''; cur = name;
       $$('.chip', menu).forEach(c => c.classList.toggle('on', c.dataset.gn === name));
-      stage.addEventListener('gscore', e => setScore(e.detail));
+      setPaused(false);
       game = def.init(stage);
       help.textContent = game.help || def.hint || '';
-      stage.focus();
+      // Кнопки на экране под текущую игру.
+      pad.innerHTML = (def.pad || []).map(b =>
+        '<button class="g-pad-btn ' + (b.w === 'wide' ? 'wide' : '') + '" data-k="' + esc(b.k) + '">' + esc(b.t) + '</button>').join('');
       Sound.open();
       running = true; last = performance.now(); raf = requestAnimationFrame(loop);
     }
 
+    // Удержание кнопки повторяет нажатие — так удобно и мышью, и пальцем.
+    let holdT = 0;
+    function holdStart(k) {
+      press(k);
+      const rep = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k);
+      if (!rep) return;
+      clearInterval(holdT);
+      holdT = setInterval(() => press(k), 110);
+    }
+    function holdEnd(k) {
+      clearInterval(holdT);
+      if (game && game.keyup) game.keyup(k);
+    }
+    pad.addEventListener('pointerdown', e => {
+      const b = e.target.closest('.g-pad-btn'); if (!b) return;
+      e.preventDefault(); b.classList.add('on');
+      holdStart(b.dataset.k);
+    });
+    pad.addEventListener('pointerup', e => {
+      const b = e.target.closest('.g-pad-btn'); if (!b) return;
+      b.classList.remove('on'); holdEnd(b.dataset.k);
+    });
+    pad.addEventListener('pointerleave', e => {
+      const b = e.target.closest('.g-pad-btn'); if (!b) return;
+      b.classList.remove('on'); holdEnd(b.dataset.k);
+    });
+    pad.addEventListener('pointercancel', e => {
+      const b = e.target.closest('.g-pad-btn'); if (!b) return;
+      b.classList.remove('on'); holdEnd(b.dataset.k);
+    });
+
+    // Клавиатура работает, когда окно игр активно.
+    rec.api.keys = k => {
+      if (!game) return false;
+      if (k === 'Escape') { setPaused(!paused); return true; }
+      return game.key ? game.key(k) : false;
+    };
+    rec.api.keyup = k => { if (game && game.keyup) return game.keyup(k); return false; };
+
     $('.app-bar', rec.body).onclick = e => {
       const b = e.target.closest('[data-g]'); if (!b) return;
-      if (b.dataset.g === 'restart') { Sound.click(); if (game) game.restart(); stage.focus(); }
-      if (b.dataset.g === 'pause') {
-        Sound.click();
-        if (game && game.key) { game.key('p'); if (cur === 'Тетрис' || cur === 'Змейка' || cur === '2048') {} }
-        Notify('Игры', 'Пауза — только для «Змейки». В остальных играх просто уберите окно.', ICO.game, true);
-      }
+      Sound.click();
+      if (b.dataset.g === 'restart') { setPaused(false); if (game && game.restart) game.restart(); }
+      if (b.dataset.g === 'pause') setPaused(!paused);
     };
     menu.onclick = e => { const b = e.target.closest('[data-gn]'); if (b) start(b.dataset.gn); };
 
-    // Клавиатура: стрелки не должны прокручивать окно, а Win-меню не открываться.
-    stage.addEventListener('keydown', e => {
-      if (!game || !game.key) return;
-      if (game.key(e.key)) { e.preventDefault(); e.stopPropagation(); }
-    });
-
     rec.api.start = start;
+    rec.api.stop = stop;
     start(arg && Games.byName(arg) ? arg : 'Змейка');
   },
   onClose(rec) { rec.api.stop && rec.api.stop(); },
@@ -1897,23 +2063,29 @@ WM.register({
    ПРИЛОЖЕНИЕ: ПАРАМЕТРЫ
    ========================================================================== */
 /* ------------------------------ БРАУЗЕР ----------------------------------- */
+/* Сайты открываются через серверный прокси /__proxy. Сервер сам скачивает
+   страницу, убирает запрет на показ в рамке и отдаёт её как свою. Поэтому
+   работают и Google, и YouTube, которые напрямую в рамку не пускают. */
+const proxyUrl = u => '/__proxy?u=' + encodeURIComponent(u);
+
 WM.register({
-  id: 'browser', title: 'Браузер', icon: ICO.globe, w: 1020, h: 660,
+  id: 'browser', title: 'Браузер', icon: ICO.globe, w: 1080, h: 690,
   init(rec) {
-    const HOME = 'https://ru.wikipedia.org/wiki/Заглавная_страница';
-    const BOOKMARKS = [
-      { t: 'Википедия', u: HOME },
-      { t: 'Викисловарь', u: 'https://ru.wiktionary.org' },
-      { t: 'Викисклад', u: 'https://commons.wikimedia.org' },
-      { t: 'Викиданные', u: 'https://www.wikidata.org' },
-      { t: 'Архив интернета', u: 'https://web.archive.org' },
-      { t: 'Проект «Гутенберг»', u: 'https://www.gutenberg.org' },
-      { t: 'OpenStreetMap', u: 'https://www.openstreetmap.org/export/embed.html?bbox=37.3,55.5,37.9,55.95&layer=mapnik' },
-      { t: 'Новости', u: 'https://news.ycombinator.com' },
-      { t: 'Пример', u: 'https://example.com' },
+    const HOME = 'browser.html';
+    const QUICK = [
+      { t: 'Google', u: 'https://www.google.com/' },
+      { t: 'YouTube', u: 'https://www.youtube.com/' },
+      { t: 'Википедия', u: 'https://ru.wikipedia.org/' },
+      { t: 'Яндекс', u: 'https://yandex.ru/' },
+      { t: 'ВКонтакте', u: 'https://vk.com/' },
+      { t: 'Кинопоиск', u: 'https://www.kinopoisk.ru/' },
+      { t: 'Гитхаб', u: 'https://github.com/' },
+      { t: 'Викисловарь', u: 'https://ru.wiktionary.org/' },
+      { t: 'Погода', u: 'https://yandex.ru/pogoda/' },
+      { t: 'Архив', u: 'https://web.archive.org/' },
     ];
 
-    const st = { url: HOME, hist: [], idx: -1, loading: false };
+    const st = { url: HOME, hist: [], idx: -1, loading: false, real: '' };
 
     rec.body.innerHTML = `<div class="app br">
       <div class="app-bar br-bar">
@@ -1921,15 +2093,21 @@ WM.register({
         <button class="btn" data-br="fwd" title="Вперёд">${ICO.next}</button>
         <button class="btn" data-br="reload" title="Обновить">${ICO.refresh}</button>
         <button class="btn" data-br="home" title="Домой">${ICO.disk}</button>
-        <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес или запрос">
+        <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес или запрос — поиск идёт через Google">
         <button class="btn primary" data-br="go">Перейти</button>
+        <button class="btn" data-br="out" title="Открыть в новой вкладке браузера">${ICO.link}</button>
       </div>
       <div class="br-marks"></div>
       <div class="br-stage">
         <div class="br-state" id="brState"><span class="br-spin"></span>Загрузка…</div>
         <iframe class="br-frame" id="brFrame" referrerpolicy="no-referrer"></iframe>
       </div>
-      <div class="br-foot"><span id="brStatus">Готово</span><span class="spacer"></span><span id="brCount"></span></div>
+      <div class="br-foot">
+        <span id="brStatus">Готово</span>
+        <span class="spacer"></span>
+        <span class="br-chip">прокси включён</span>
+        <span id="brCount"></span>
+      </div>
     </div>`;
 
     const urlIn = $('#brUrl', rec.body);
@@ -1939,65 +2117,83 @@ WM.register({
     const count = $('#brCount', rec.body);
     const marks = $('.br-marks', rec.body);
 
-    marks.innerHTML = BOOKMARKS.map(b =>
+    marks.innerHTML = QUICK.map(b =>
       '<button class="br-mark" data-u="' + esc(b.u) + '" title="' + esc(b.u) + '">' + esc(b.t) + '</button>').join('');
 
-    // Адрес без схемы и с пробелами превращаем в поисковый запрос.
+    // Что считаем адресом, а что — поисковым запросом.
     function normalize(v) {
-      let s = String(v || '').trim();
-      if (!s) return HOME;
+      const s = String(v || '').trim();
+      if (!s || s === HOME) return HOME;
       if (/^https?:\/\//i.test(s)) return s;
-      if (/^[\w-]+(\.[\w-]+)+(\/|$|\?|:)/.test(s) && s.indexOf(' ') < 0) return 'https://' + s;
-      return 'https://ru.wikipedia.org/w/index.php?search=' + encodeURIComponent(s);
+      if (/^[\w-]+(\.[\w-]+)+([/?#:]|$)/.test(s) && s.indexOf(' ') < 0) return 'https://' + s;
+      return 'https://www.google.com/search?q=' + encodeURIComponent(s);
+    }
+    const hostOf = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u; } };
+
+    function markActive(u) {
+      $$('.br-mark', marks).forEach(b => b.classList.toggle('on', hostOf(b.dataset.u) === hostOf(u)));
+    }
+
+    function paintError(url, reason) {
+      state.classList.add('on');
+      state.innerHTML = '<div class="br-block"><b>Сайт не открылся</b>' +
+        '<p>' + esc(reason || 'Прокси не смог получить страницу.') + '</p>' +
+        '<button class="btn primary" id="brOut2">Открыть в новой вкладке</button></div>';
+      $('#brOut2', rec.body).onclick = () => window.open(url, '_blank', 'noopener');
     }
 
     let failsafe = null;
     function load(u, push) {
       const url = normalize(u);
       st.url = url;
-      urlIn.value = url;
+      urlIn.value = url === HOME ? '' : url;
       st.loading = true;
       state.classList.add('on');
       state.innerHTML = '<span class="br-spin"></span>Загрузка…';
-      status.textContent = 'Подключение к ' + (() => { try { return new URL(url).host; } catch (e) { return url; } })();
-      frame.src = url;
+      status.textContent = url === HOME ? 'Начальная страница' : 'Подключение к ' + hostOf(url);
+      frame.src = url === HOME ? HOME : proxyUrl(url);
       if (push !== false) {
         st.hist = st.hist.slice(0, st.idx + 1);
         st.hist.push(url);
         st.idx = st.hist.length - 1;
       }
       clearTimeout(failsafe);
-      // Если страница запрещает встраивание, кадр остаётся пустым.
       failsafe = setTimeout(() => {
         if (!st.loading) return;
         st.loading = false;
-        let blank = false;
-        try { blank = !frame.contentDocument || frame.contentDocument.location.href === 'about:blank'; } catch (e) { blank = false; }
-        if (blank) {
-          state.classList.add('on');
-          state.innerHTML = '<div class="br-block"><b>Сайт не разрешает показ в рамке</b>' +
-            '<p>Многие крупные сайты (поисковики, соцсети, банки) запрещают встраивание. Откройте адрес в новой вкладке браузера.</p>' +
-            '<button class="btn primary" id="brOut">Открыть в новой вкладке</button></div>';
-          $('#brOut', rec.body).onclick = () => window.open(url, '_blank', 'noopener');
-          status.textContent = 'Заблокировано сайтом';
-        } else { state.classList.remove('on'); status.textContent = 'Готово'; }
-      }, 6000);
+        paintError(url, 'Сайт отвечает слишком долго. Возможно, он недоступен.');
+        status.textContent = 'Нет ответа';
+      }, 30000);
     }
 
+    // Проксированные страницы того же источника, поэтому адрес читается прямо.
     frame.onload = () => {
       clearTimeout(failsafe);
       st.loading = false;
-      // У внешнего сайта contentDocument равен null — это признак успешной
-      // загрузки, а не пустой рамки. Пустой считаем только about:blank.
-      let blank = false, sameOrigin = false;
+      let real = '', err = '';
       try {
         const d = frame.contentDocument;
-        if (d) { sameOrigin = true; blank = d.location.href === 'about:blank'; }
-      } catch (e) { blank = false; }
-      if (blank) return;                       // ждём таймаут-подсказку
+        if (d) {
+          const m = d.querySelector('meta[name="x-proxy-url"]');
+          if (m) real = m.getAttribute('content') || '';
+          const e = d.querySelector('meta[name="x-proxy-error"]');
+          if (e) err = (d.body ? d.body.innerText : '').trim().slice(0, 200);
+          if (!real && !m) real = d.location.href;
+        }
+      } catch (e) { real = ''; }
+
+      if (err) { paintError(st.url, err); status.textContent = 'Ошибка сайта'; return; }
       state.classList.remove('on');
-      status.textContent = 'Загружено';
-      count.textContent = sameOrigin ? 'Локальная страница' : 'Внешний сайт';
+      if (real && !/about:blank/.test(real)) {
+        st.real = real;
+        st.url = real;
+        if (!/browser\.html/.test(real)) { urlIn.value = real; urlIn.title = real; }
+        status.textContent = 'Загружено';
+        count.textContent = hostOf(real);
+        markActive(real);
+      } else {
+        status.textContent = 'Загружено';
+      }
     };
 
     function go(v, push) { Sound.click(); load(v, push); }
@@ -2012,16 +2208,16 @@ WM.register({
       if (a === 'fwd') fwd();
       if (a === 'reload') load(st.url, false);
       if (a === 'home') go(HOME);
+      if (a === 'out') window.open(st.url === HOME ? HOME : st.url, '_blank', 'noopener');
     };
     urlIn.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(urlIn.value); } };
     marks.onclick = e => {
       const b = e.target.closest('.br-mark'); if (!b) return;
-      $$('.br-mark', marks).forEach(x => x.classList.toggle('on', x === b));
       go(b.dataset.u);
     };
 
-    // Открыть адрес из другого места системы.
     rec.api.open = u => load(u);
+    rec.api.home = () => load(HOME);
     load(HOME);
   },
 });
@@ -2917,13 +3113,22 @@ function initKeys() {
       if (r) WM.close(r.id); else power('shutdown');
       return;
     }
+    // Клавиши отдаём активному окну, если оно их запрашивает. Так игра
+    // получает стрелки раньше, чем система успеет переключить окно.
+    const aw = activeWin();
+    if (!typing && aw && aw.api.keys && aw.api.keys(e.key)) { e.preventDefault(); return; }
+
     if (e.ctrlKey && e.altKey && k === 't') { e.preventDefault(); WM.open('terminal'); return; }
     if (e.key === 'Escape') { closeCtx(); Quick.close(); Widgets.close(); Spot.close(); StartMenu.closeMenu(); return; }
     if (e.key === 'F5') { e.preventDefault(); renderIcons(); return; }
     if (typing) return;
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !StartMenu.isOpen()) { e.preventDefault(); cycleWins(e.key === 'ArrowDown' ? 1 : -1); }
   });
-  window.addEventListener('keyup', e => { if (e.key === 'Meta') meta = false; });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'Meta') meta = false;
+    const aw = activeWin();
+    if (aw && aw.api.keyup) aw.api.keyup(e.key);
+  });
   window.addEventListener('blur', () => { meta = false; });
 }
 

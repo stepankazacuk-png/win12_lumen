@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Новая вкладка — Люмен</title>
+<style>
+  :root{
+    --accent:#5cc8ff; --accent2:#7b6cff; --txt:#eaf2ff; --dim:#93a3c0;
+    --stroke:rgba(255,255,255,.1);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:var(--txt);background:#070b16;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:34px;padding:40px 22px;
+  }
+  body::before{
+    content:"";position:fixed;inset:-20%;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(38% 44% at 18% 22%,rgba(92,200,255,.30),transparent 70%),
+      radial-gradient(34% 40% at 82% 18%,rgba(123,108,255,.28),transparent 72%),
+      radial-gradient(40% 44% at 50% 96%,rgba(255,92,158,.20),transparent 72%);
+    filter:blur(30px);animation:drift 22s ease-in-out infinite alternate;
+  }
+  @keyframes drift{to{transform:translate3d(3%,-3%,0) scale(1.08)}}
+  .wrap{position:relative;z-index:1;width:100%;max-width:760px;display:flex;flex-direction:column;gap:30px;align-items:center}
+  .logo{display:flex;align-items:center;gap:13px;font-size:27px;font-weight:600;letter-spacing:-.4px}
+  .logo svg{width:40px;height:40px;color:var(--accent)}
+  .sub{color:var(--dim);font-size:13.5px;margin-top:-20px}
+  form{width:100%;display:flex;gap:9px}
+  input[type=search]{
+    flex:1;padding:15px 20px;border-radius:99px;border:1px solid var(--stroke);
+    background:rgba(255,255,255,.07);color:var(--txt);font-size:15px;outline:none;
+    backdrop-filter:blur(14px);transition:.18s;
+  }
+  input[type=search]:focus{border-color:var(--accent);background:rgba(255,255,255,.11);box-shadow:0 0 0 4px rgba(92,200,255,.14)}
+  input[type=search]::placeholder{color:#7c8aa8}
+  button{
+    padding:15px 26px;border-radius:99px;border:0;cursor:pointer;font-size:14.5px;font-weight:600;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#08131f;transition:.18s;
+  }
+  button:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(92,200,255,.3)}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:13px;width:100%}
+  a.tile{
+    display:flex;flex-direction:column;align-items:center;gap:9px;padding:17px 8px;border-radius:17px;
+    background:rgba(255,255,255,.055);border:1px solid var(--stroke);text-decoration:none;color:var(--txt);
+    font-size:12.5px;transition:.18s;backdrop-filter:blur(12px);
+  }
+  a.tile:hover{background:rgba(255,255,255,.12);transform:translateY(-3px);border-color:rgba(92,200,255,.5)}
+  a.tile i{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-size:17px;font-style:normal;font-weight:700;color:#08131f}
+  .hint{color:#6f7d99;font-size:12px;text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/>
+    </svg>
+    <span>Новая вкладка</span>
+  </div>
+  <p class="sub">Введите адрес сайта или поисковый запрос — поиск идёт через Google.</p>
+
+  <form onsubmit="event.preventDefault();var v=this.q.value.trim();if(v)location.href='https://www.google.com/search?q='+encodeURIComponent(v)">
+    <input type="search" name="q" placeholder="Например: погода в Москве" autocomplete="off" autofocus>
+    <button type="submit">Найти</button>
+  </form>
+
+  <div class="tiles">
+    <a class="tile" href="https://www.google.com/"><i style="background:linear-gradient(135deg,#4285f4,#34a853)">G</i>Google</a>
+    <a class="tile" href="https://www.youtube.com/"><i style="background:linear-gradient(135deg,#ff0000,#ff5c5c)">▶</i>YouTube</a>
+    <a class="tile" href="https://ru.wikipedia.org/"><i style="background:linear-gradient(135deg,#e8eaed,#9aa0a6)">W</i>Википедия</a>
+    <a class="tile" href="https://yandex.ru/"><i style="background:linear-gradient(135deg,#fc3f1d,#ff8a5c)">Я</i>Яндекс</a>
+    <a class="tile" href="https://vk.com/"><i style="background:linear-gradient(135deg,#2787f5,#5cc8ff)">VK</i>ВКонтакте</a>
+    <a class="tile" href="https://www.kinopoisk.ru/"><i style="background:linear-gradient(135deg,#ff6a00,#ffb347)">K</i>Кинопоиск</a>
+    <a class="tile" href="https://github.com/"><i style="background:linear-gradient(135deg,#6e7681,#c9d1d9)">GH</i>Гитхаб</a>
+    <a class="tile" href="https://yandex.ru/pogoda/"><i style="background:linear-gradient(135deg,#4f8cff,#8fd3ff)">☁</i>Погода</a>
+    <a class="tile" href="https://ru.wiktionary.org/"><i style="background:linear-gradient(135deg,#c792ea,#e0c3fc)">С</i>Словарь</a>
+    <a class="tile" href="https://web.archive.org/"><i style="background:linear-gradient(135deg,#4ee1a0,#a7f3d0)">⏱</i>Архив</a>
+  </div>
+
+  <p class="hint">Все сайты открываются через прокси «Люмена», поэтому запрет на показ в рамке не мешает.</p>
+</div>
+<script>
+  // Ссылки плиток идут через прокси: иначе сайт запретит показ в рамке.
+  document.querySelectorAll('a.tile').forEach(a => {
+    a.addEventListener('click', ev => {
+      ev.preventDefault();
+      location.href = '/__proxy?u=' + encodeURIComponent(a.getAttribute('href'));
+    });
+  });
+  document.querySelector('form').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const v = document.querySelector('input[name=q]').value.trim();
+    if (v) location.href = '/__proxy?u=' + encodeURIComponent('https://www.google.com/search?q=' + v);
+  });
+</script>
+</body>
+</html>
