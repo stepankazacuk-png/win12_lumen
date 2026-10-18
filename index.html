@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Windows 12</title>
+<meta name="description" content="Windows 12 — концептуальная веб-операционная система в браузере.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ BOOT ============ -->
+<div id="boot">
+  <div class="boot-inner">
+    <div class="boot-logo">
+      <svg class="boot-mark" viewBox="0 0 100 100"><use href="#winLogo"/></svg>
+      <div class="boot-word">Windows <b>12</b></div>
+    </div>
+    <div class="boot-bar"><i id="bootBar"></i></div>
+    <div class="boot-tip" id="bootTip">Инициализация ядра…</div>
+  </div>
+</div>
+
+<!-- ============ LOCK ============ -->
+<div id="lock">
+  <div class="lock-bg wall" data-wp="aurora">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div>
+    <div class="grain"></div><div class="grid"></div><div class="vig"></div>
+  </div>
+  <div class="lock-top">
+    <div class="lock-clock" id="lockClock">00:00</div>
+    <div class="lock-date" id="lockDate">—</div>
+  </div>
+  <div class="lock-bottom">
+    <div class="avatar" id="lockAvatar">Г</div>
+    <div>
+      <div class="lock-user">Гость</div>
+      <div class="lock-hint">Нажмите Enter, чтобы войти</div>
+    </div>
+    <button class="lock-btn" id="lockBtn">Войти →</button>
+  </div>
+</div>
+
+<!-- ============ DESKTOP ============ -->
+<div id="desk">
+  <div class="wall" id="wall" data-wp="aurora">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div>
+    <div class="grid"></div><div class="grain"></div><div class="vig"></div>
+  </div>
+
+  <div id="icons"></div>
+  <div id="wins"></div>
+  <div id="snapGhost"></div>
+  <div id="bright"></div>
+
+  <!-- Widgets panel -->
+  <aside id="widgets">
+    <div class="wcard w-hero">
+      <h4>Погода · Москва</h4>
+      <div class="w-temp" id="wTemp">+7°</div>
+      <div class="w-sub" id="wCond">Облачно · ощущается +5°</div>
+      <div class="w-sub">Ветер 4 м/с · влажность 78%</div>
+    </div>
+    <div class="wcard">
+      <h4>Календарь</h4>
+      <div class="w-clock" id="wClock">00:00</div>
+      <div class="w-grid" id="wCal"></div>
+    </div>
+    <div class="wcard">
+      <h4>Загрузка системы</h4>
+      <div class="stat"><span>CPU</span><div class="bar"><i id="sCpu"></i></div><b id="vCpu">0%</b></div>
+      <div class="stat"><span>RAM</span><div class="bar"><i id="sRam"></i></div><b id="vRam">0%</b></div>
+      <div class="stat"><span>GPU</span><div class="bar"><i id="sGpu"></i></div><b id="vGpu">0%</b></div>
+      <div class="stat"><span>NET</span><div class="bar"><i id="sNet"></i></div><b id="vNet">0%</b></div>
+    </div>
+    <div class="wcard">
+      <h4>Лента</h4>
+      <div class="w-news"><div><em>Технологии</em>Windows 12 получила оконный менеджер с магнитным снапом на 12 зон.</div></div>
+      <div class="w-news"><div><em>Наука</em>Квантовый планировщик задач снизил энергопотребление на 34%.</div></div>
+      <div class="w-news"><div><em>Космос</em>Орбитальный релиз ядра 12.0.1 отложен на один цикл.</div></div>
+    </div>
+  </aside>
+
+  <!-- Start menu -->
+  <div id="start">
+    <div class="start-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="startSearch" placeholder="Поиск приложений, файлов и параметров" autocomplete="off">
+    </div>
+    <div id="startBody">
+      <div class="start-head"><h3>Закреплено</h3><button class="pill" id="allApps">Все приложения ›</button></div>
+      <div class="start-grid" id="startGrid"></div>
+    </div>
+    <div class="start-foot">
+      <div class="start-user"><div class="avatar">Г</div><span>Гость</span></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="powerBtn" title="Питание">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/></svg>
+      </button>
+      <button class="icon-btn" id="setBtn" title="Параметры">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H7a1.6 1.6 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quick settings -->
+  <div id="quick">
+    <div class="qs-toggles">
+      <button class="qs-t on" data-t="wifi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8.5a16 16 0 0 1 20 0"/><path d="M5 12.5a11 11 0 0 1 14 0"/><path d="M8.5 16.5a6 6 0 0 1 7 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>Wi-Fi</button>
+      <button class="qs-t on" data-t="bt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg>Bluetooth</button>
+      <button class="qs-t" data-t="air"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10a5 5 0 0 1-10 0"/><path d="M12 3l6 4-6 4"/></svg>Режим полёта</button>
+      <button class="qs-t" data-t="night"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 13a8.5 8.5 0 1 1-9.5-9 7 7 0 0 0 9.5 9z"/></svg>Ночной</button>
+      <button class="qs-t" data-t="save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><rect x="4" y="19" width="16" height="2" rx="1"/></svg>Экономия</button>
+      <button class="qs-t" data-t="focus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>Фокус</button>
+    </div>
+    <div class="qs-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>
+      <input type="range" id="vol" min="0" max="100" value="62">
+    </div>
+    <div class="qs-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+      <input type="range" id="brightRange" min="30" max="100" value="100">
+    </div>
+    <div>
+      <div class="qs-sec" style="margin-bottom:9px">Акцент</div>
+      <div class="qs-chips" id="accChips"></div>
+    </div>
+    <div>
+      <div class="qs-sec" style="margin-bottom:9px">Обои</div>
+      <div class="qs-chips" id="wpChips"></div>
+    </div>
+    <div class="qs-foot">
+      <div class="battery">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="17" height="10" rx="2.5"/><rect x="4" y="9" width="10" height="6" rx="1" fill="currentColor"/><path d="M21 10.5v3"/></svg>
+        <span id="batTxt">87%</span>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" id="qsSettings">Все параметры</button>
+    </div>
+  </div>
+
+  <!-- Spotlight search -->
+  <div id="spot">
+    <div class="start-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="spotInput" placeholder="Введите команду или найдите что угодно…" autocomplete="off">
+    </div>
+    <div class="search-res" id="spotRes"></div>
+    <div class="spot-hint"><span><kbd>Enter</kbd> открыть</span><span><kbd>Esc</kbd> закрыть</span><span><kbd>Win</kbd> меню «Пуск»</span></div>
+  </div>
+
+  <!-- Context menu -->
+  <div id="ctx"></div>
+
+  <!-- Notifications -->
+  <div id="notif"></div>
+
+  <!-- Volume / brightness HUD -->
+  <div id="volHud">
+    <svg id="hudIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>
+    <div class="hud-bar"><i id="hudBar" style="width:62%"></i></div>
+    <span id="hudVal">62</span>
+  </div>
+
+  <!-- Taskbar -->
+  <div id="taskbar" data-align="center">
+    <button class="tb-btn" id="startBtn" title="Пуск">
+      <svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>
+    </button>
+    <button class="tb-btn" id="searchBtn" title="Поиск">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    </button>
+    <button class="tb-btn" id="widgetsBtn" title="Виджеты">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>
+    </button>
+    <div class="tb-sep"></div>
+    <div class="tb-dock" id="tbDock"></div>
+    <div class="tray">
+      <button class="tray-btn" id="langBtn"><span style="font-size:11px;font-weight:700">РУС</span></button>
+      <button class="tray-btn" id="trayIcons" title="Скрытые значки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 16a6 6 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="17" height="10" rx="2.5"/><rect x="4" y="9" width="11" height="6" rx="1" fill="currentColor"/></svg>
+      </button>
+      <button class="tray-btn" id="clockBtn">
+        <div class="tray-time"><span id="tbTime">00:00</span><small id="tbDate">—</small></div>
+      </button>
+      <button class="tray-btn" id="notifBtn" title="Уведомления">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>
+      </button>
+    </div>
+    <button id="showDesk" title="Свернуть все"></button>
+  </div>
+</div>
+
+<!-- ============ SHUTDOWN ============ -->
+<div id="shut">
+  <div class="spinner"></div>
+  <div style="font-family:var(--font-display);font-weight:300;font-size:17px;letter-spacing:.1em" id="shutTxt">Завершение работы…</div>
+</div>
+
+<!-- ============ SVG sprite ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="lgWin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5cc8ff"/><stop offset="55%" stop-color="#7b6cff"/><stop offset="100%" stop-color="#ff5c9e"/>
+    </linearGradient>
+    <symbol id="winLogo" viewBox="0 0 100 100">
+      <g fill="url(#lgWin)">
+        <rect x="6" y="6" width="40" height="40" rx="4"/>
+        <rect x="54" y="6" width="40" height="40" rx="4"/>
+        <rect x="6" y="54" width="40" height="40" rx="4"/>
+        <rect x="54" y="54" width="40" height="40" rx="4"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<script src="os.js"></script>
+</body>
+</html>
