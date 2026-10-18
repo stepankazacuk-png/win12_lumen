@@ -216,6 +216,44 @@
   </defs>
 </svg>
 
+<script>
+/* Логотип компьютера. Если в корне лежит файл logo.<ext>, он подменяет
+   встроенный значок #winLogo во всех местах сразу: загрузка, Пуск, локскрин,
+   «О системе», панель администратора и экран выключения. Если файла нет —
+   остаётся встроенный знак. */
+(function () {
+  const FILES = ['logo.svg', 'logo.png', 'logo.webp', 'logo.jpg', 'logo.jpeg'];
+  const NS = 'http://www.w3.org/2000/svg';
+
+  function apply(src) {
+    const sprite = document.getElementById('winLogo');
+    if (!sprite) return;
+    const img = document.createElementNS(NS, 'image');
+    img.setAttribute('href', src);
+    img.setAttribute('x', '0'); img.setAttribute('y', '0');
+    img.setAttribute('width', '100'); img.setAttribute('height', '100');
+    img.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    sprite.textContent = '';
+    sprite.appendChild(img);
+
+    let icon = document.querySelector('link[rel="icon"]');
+    if (!icon) { icon = document.createElement('link'); icon.rel = 'icon'; document.head.appendChild(icon); }
+    icon.href = src;
+    document.documentElement.setAttribute('data-logo', src);
+  }
+
+  let i = 0;
+  (function probe() {
+    if (i >= FILES.length) return;
+    const src = FILES[i++];
+    const t = new Image();
+    t.onload = () => apply(src);
+    t.onerror = probe;
+    t.src = src;
+  })();
+})();
+</script>
+
 <script src="os.js?v=16"></script>
 </body>
 </html>

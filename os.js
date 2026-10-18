@@ -716,7 +716,7 @@ WM.register({
           '<span class="p">      ▄█████████▄      </span>  ─────────────────────────',
           '<span class="p">     ███████████████   </span>  ОС:        Люмен 1.4 (сборка 3040)',
           '<span class="p">     ███  ███  ██████  </span>  Ядро:      люмен-1.4-generic',
-          '<span class="p">     ███  ███  ██████  </span>  Оболочка:  Shell 12 (веб)',
+          '<span class="p">     ███  ███  ██████  </span>  Оболочка:  lsh (веб)',
           '<span class="p">     ███████████████   </span>  Оконный:   Плексус, снап на 12 зон',
           '<span class="p">      ▀█████████▀      </span>  Шрифты:    Manrope / Unbounded',
           '<span class="p">        ▀▀▀▀▀▀▀▀        </span>  Тема:      ' + State.theme + ', акцент ' + State.accent,
@@ -897,7 +897,7 @@ const TaskMan = (() => {
     { pid: 4, name: 'System', base: 1.2, mem: 88 },
     { pid: 108, name: 'люмен-ядро', base: 2.4, mem: 214 },
     { pid: 512, name: 'Плексус (оконный менеджер)', base: 1.8, mem: 132 },
-    { pid: 620, name: 'Shell 12', base: 3.1, mem: 168 },
+    { pid: 620, name: 'lsh', base: 3.1, mem: 168 },
     { pid: 704, name: 'AudioSrv', base: .6, mem: 54 },
     { pid: 812, name: 'Defender 12', base: 1.1, mem: 96 },
   ];
@@ -1306,7 +1306,7 @@ WM.register({
       { n: 'Photos', d: 'Галерея и обои', i: ICO.photos, app: 'photos' },
       { n: 'Paint 12', d: 'Растровый редактор', i: ICO.paint, app: 'paint' },
       { n: 'Music', d: 'Синтезатор и плеер', i: ICO.music, app: 'music' },
-      { n: 'Terminal', d: 'PowerShell 12', i: ICO.term, app: 'terminal' },
+      { n: 'Terminal', d: 'lsh 12', i: ICO.term, app: 'terminal' },
       { n: 'Календарь', d: 'Планирование', i: ICO.cal, app: 'calendar' },
       { n: 'Диспетчер задач', d: 'Процессы и производительность', i: ICO.task, app: 'taskmgr' },
     ];
