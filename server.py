@@ -13,6 +13,7 @@
 Запуск: python3 server.py [порт]
 """
 
+import errno
 import gzip
 import html as html_mod
 import http.cookiejar
@@ -351,7 +352,19 @@ class Server(ThreadingHTTPServer):
 
 if __name__ == '__main__':
     os.chdir(ROOT)
-    srv = Server(('0.0.0.0', PORT), Handler)
+    try:
+        srv = Server(('0.0.0.0', PORT), Handler)
+    except OSError as e:
+        # Понятный текст вместо трассировки: чаще всего порт занят тем, что
+        # сервер уже запущен в другом окне.
+        if getattr(e, 'errno', None) in (errno.EADDRINUSE, errno.EACCES):
+            print('Порт %d уже занят.' % PORT, flush=True)
+            print('Скорее всего, система уже запущена — откройте http://localhost:%d/' % PORT, flush=True)
+            print('Если это не так, закройте лишнее окно или запустите на другом порту:'
+                  ' python3 server.py 12001', flush=True)
+        else:
+            print('Не удалось запустить сервер на порту %d: %s' % (PORT, e), flush=True)
+        sys.exit(1)
     print('Люмен запущен: http://localhost:%d/  (прокси: /__proxy)' % PORT, flush=True)
     try:
         srv.serve_forever()
