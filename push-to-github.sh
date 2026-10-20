@@ -22,6 +22,39 @@ fi
 
 cd "$DIR" || exit 1
 
+# Заранее проверяем право на запись файлов: у fine-grained токена раздел
+# «Contents» по умолчанию только на чтение, и тогда push падает с невнятным
+# 403. Лучше сказать прямо, чего не хватает.
+CAN_WRITE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${REPO}/contents/.push-probe" \
+  -d '{"message":"probe","content":"cHJvYmU="}')"
+
+if [ "$CAN_WRITE" = "403" ] || [ "$CAN_WRITE" = "404" ]; then
+  cat <<'TXT'
+Токен принят, но права на запись нет.
+
+У fine-grained токена права раздаются по разделам. Включите:
+  Contents        — Read and write   (нужно для заливки файлов)
+  Administration  — Read and write   (включить Pages)
+  Pages           — Read and write   (публикация сайта)
+
+Проще всего выпустить классический токен с одним правом «repo»:
+https://github.com/settings/tokens/new?scopes=repo
+TXT
+  exit 1
+fi
+
+# Пробная запись удалась — убираем след, чтобы он не попал в репозиторий.
+PROBE_SHA="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  "https://api.github.com/repos/${REPO}/contents/.push-probe" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sha",""))' 2>/dev/null)"
+[ -n "$PROBE_SHA" ] && curl -s -o /dev/null -X DELETE \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  "https://api.github.com/repos/${REPO}/contents/.push-probe" \
+  -d "{\"message\":\"cleanup\",\"sha\":\"${PROBE_SHA}\"}"
+
 echo "Заливаю в $REPO, ветка $BRANCH..."
 
 # Токен передаём на один вызов, в конфиг git не пишем.
