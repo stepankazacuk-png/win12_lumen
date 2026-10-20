@@ -482,18 +482,40 @@ GITHUB_TOKEN=ваш_токен ./push-to-github.sh
 
 ### Сайт на GitHub Pages
 
-`.github/workflows/pages.yml` публикует `index.html`, `styles.css`, `os.js` и
-`.nojekyll` на GitHub Pages при каждом пуше в `main`. Сборки нет: система —
-статические файлы.
+Сайт включён и работает: <https://stepankazacuk-png.github.io/win12_lumen/>.
+Источник — ветка `main`, папка `/ (root)`, сборки нет: система статические
+файлы. Включается один раз: Settings → Pages → Source → «Deploy from a
+branch» → Branch `main`, папка `/ (root)`.
 
-Публикуются только эти четыре файла. `server.py` на Pages бесполезен (нет
-Python), а встроенному браузеру всё равно нужен свой сервер — без него окно
-пишет «Сервер не запущен. Откройте систему через server.py». Остальное
-работает полностью: включение, вход по коду, рабочий стол, окна, терминал,
-проводник, блокнот, калькулятор, игры, музыка, настройки.
+**Почему не через Actions.** Первый вариант — workflow
+`.github/workflows/pages.yml` — не залился: GitHub отвечает
+`refusing to allow a Personal Access Token to create or update workflow
+.github/workflows/pages.yml without workflow scope`. Классическому токену с
+правом `repo` не хватает отдельного права `workflow`, а fine-grained токену —
+раздела «Workflows». Публикация из ветки делает то же самое и не требует ни
+права `workflow`, ни служебных файлов. Если такой workflow понадобится,
+заливать его придётся токеном с правом `workflow`.
 
-Включить сайт один раз: Settings → Pages → Source: «GitHub Actions». Адрес —
-`https://stepankazacuk-png.github.io/win12_lumen/`.
+**Файл workflow нельзя просто удалить коммитом.** GitHub отклоняет push, если
+`.github/workflows/*` встречается в *любом* отправляемом коммите, даже в том,
+где файл удалён. История вычищена так:
+
+```bash
+git filter-branch -f --index-filter \
+  'git rm --cached --ignore-unmatch -r .github' --prune-empty HEAD
+git branch -D backup-before-clean; rm -rf .git/refs/original
+git reflog expire --expire=now --all && git gc --prune=now
+```
+
+Проверка, что не осталось следов: `git rev-list --all --objects | grep -c .github`
+должно вернуть `0`.
+
+Публикуются все файлы из корня, но нужны только `index.html`, `styles.css`,
+`os.js` и `.nojekyll` (последний — чтобы Jekyll не трогал файлы). `server.py`
+на Pages бесполезен (нет Python), а встроенному браузеру всё равно нужен свой
+сервер — без него окно пишет «Сервер не запущен. Откройте систему через
+server.py». Остальное работает полностью: включение, вход по коду, рабочий
+стол, окна, терминал, проводник, блокнот, калькулятор, игры, музыка, настройки.
 
 ### Проверка набора для Pages
 
