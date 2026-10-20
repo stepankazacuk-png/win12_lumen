@@ -58,9 +58,110 @@ const ICO = {
   chip: G('<rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>'),
 };
 
-/* Кодовое слово владельца. Оно же — код запуска и код разблокировки.
-   Спрашивается дважды: при включении компьютера и при блокировке. */
-const CODEWORD = 'XXXXXX';
+/* ============================================================================
+   ДОСТУП: КОД ВЛАДЕЛЬЦА, ПАРОЛЬ И КОД ВОССТАНОВЛЕНИЯ
+   ========================================================================== */
+/* Ни одного кода и пароля в исходниках нет: владелец задаёт их сам при первом
+   запуске. Система хранит только отпечатки — SHA-256 с солью и повторами.
+   Отпечаток нельзя превратить обратно в код, поэтому подсмотреть код нельзя
+   ни в файлах проекта, ни в хранилище браузера. */
+const Auth = (() => {
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+  const H0 = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0;
+
+  function sha256(bytes) {
+    const H = H0.slice();
+    const len = bytes.length, bitLen = len * 8;
+    const withOne = len + 1;
+    const total = withOne + ((56 - withOne % 64) + 64) % 64 + 8;
+    const msg = new Uint8Array(total);
+    msg.set(bytes);
+    msg[len] = 0x80;
+    const hi = Math.floor(bitLen / 0x100000000), lo = bitLen >>> 0;
+    msg[total - 8] = (hi >>> 24) & 255; msg[total - 7] = (hi >>> 16) & 255;
+    msg[total - 6] = (hi >>> 8) & 255;  msg[total - 5] = hi & 255;
+    msg[total - 4] = (lo >>> 24) & 255; msg[total - 3] = (lo >>> 16) & 255;
+    msg[total - 2] = (lo >>> 8) & 255;  msg[total - 1] = lo & 255;
+    const w = new Uint32Array(64);
+    for (let off = 0; off < total; off += 64) {
+      for (let i = 0; i < 16; i++) {
+        w[i] = ((msg[off + i * 4] << 24) | (msg[off + i * 4 + 1] << 16) |
+                (msg[off + i * 4 + 2] << 8) | msg[off + i * 4 + 3]) >>> 0;
+      }
+      for (let i = 16; i < 64; i++) {
+        const x = w[i - 15], y = w[i - 2];
+        const s0 = (rotr(x, 7) ^ rotr(x, 18) ^ (x >>> 3)) >>> 0;
+        const s1 = (rotr(y, 17) ^ rotr(y, 19) ^ (y >>> 10)) >>> 0;
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (let i = 0; i < 64; i++) {
+        const S1 = (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) >>> 0;
+        const ch = ((e & f) ^ (~e & g)) >>> 0;
+        const t1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+        const S0 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) >>> 0;
+        const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+        const t2 = (S0 + maj) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0;
+        d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+      H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+    }
+    return H;
+  }
+  const hex = b => [...b].map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
+  const digest = s => hex(sha256(new TextEncoder().encode(s)));
+
+  /* Повторов много: перебор одного кода занимает заметное время. */
+  const ITER = 12000;
+
+  function rnd(n) {
+    const a = new Uint8Array(n);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+    else for (let i = 0; i < n; i++) a[i] = Math.floor(Math.random() * 256);
+    return a;
+  }
+  const toHex = a => [...a].map(x => x.toString(16).padStart(2, '0')).join('');
+
+  function stretch(text, salt, iter) {
+    let d = salt + ':' + text;
+    for (let i = 0; i < (iter || ITER); i++) d = digest(d);
+    return d;
+  }
+  /* Отпечаток: соль + число повторов + результат. Открытого текста нет. */
+  function make(text) {
+    const salt = toHex(rnd(16));
+    return { salt: salt, iter: ITER, hash: stretch(text, salt, ITER) };
+  }
+  /* Сравнение без раннего выхода: по времени нельзя понять, где ошибка. */
+  function check(text, rec) {
+    if (!rec || !rec.hash || !rec.salt) return false;
+    const h = stretch(String(text == null ? '' : text), rec.salt, rec.iter || ITER);
+    if (h.length !== rec.hash.length) return false;
+    let diff = 0;
+    for (let i = 0; i < h.length; i++) diff |= h.charCodeAt(i) ^ rec.hash.charCodeAt(i);
+    return diff === 0;
+  }
+  /* Код восстановления: только однозначные знаки — без 0/O и 1/I. */
+  const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function recovery() {
+    const a = rnd(12);
+    const g = i => [0, 1, 2, 3].map(j => ALPHA[a[i * 4 + j] % 32]).join('');
+    return 'LMN-' + g(0) + '-' + g(1) + '-' + g(2);
+  }
+  return { make: make, check: check, recovery: recovery, ITER: ITER };
+})();
 
 /* ------------------------------ STATE ------------------------------------- */
 const State = {
@@ -68,13 +169,19 @@ const State = {
   align: 'center', transparency: true, volume: 62, brightness: 100,
   night: false, focus: false, tiling: false, zTop: 100, open: {}, seq: 0,
   admin: false, adminAttempts: 0, adminLog: [],
-  lockCode: CODEWORD,  // код владельца для запуска и разблокировки системы
+  /* Доступ: только отпечатки. ready=false — владелец ещё не задал свой код. */
+  auth: { ver: 1, ready: false, code: null, pass: null, rec: null },
   locked: true,       // система заблокирована до ввода кода
-  userPass: 'XXXXXX', // пароль учётной записи: спрашивается при включении компьютера
   passTries: 0,       // счётчик неверных попыток пароля
   lite: false,        // облегчённый режим оформления (включается сам при просадке кадров)
   tuned: false,       // решение о режиме уже принято
 };
+
+/* Что система спрашивает при входе. Кодов в коде нет — только отпечатки. */
+const hasCode = () => !!(State.auth && State.auth.code);
+const hasPass = () => !!(State.auth && State.auth.pass);
+const needCode = () => hasCode();
+
 
 /* ------------------------------ UTILS ------------------------------------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -2834,20 +2941,29 @@ WM.register({
       }
     }
 
-    const OWNER_CODE = 'XXXXXX';
     let admTab = 'overview';
 
     const log_ = m => (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] ' + m);
 
     function adminLogin_() {
       const attempts = State.adminAttempts || 0;
+      if (!hasCode()) {
+        return '<div style="padding:20px">' +
+          '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
+          '<div><h2>Панель администратора</h2><p>Раздел доступен только владельцу системы.</p></div></div>' +
+          '<div class="set-card" style="max-width:460px">' +
+            '<h5>Код владельца не задан</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0">Сейчас вход в систему без кода, поэтому панель открыта всем. Чтобы закрыть её, задайте код владельца при следующем запуске компьютера или здесь, на вкладке «Питание» после входа.</p>' +
+            '<button class="btn primary" id="adminGo" style="margin-top:14px;width:100%;justify-content:center;padding:10px">Открыть панель</button>' +
+          '</div></div>';
+      }
       return '<div style="padding:20px">' +
         '<div class="about-hero"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg>' +
         '<div><h2>Панель администратора</h2><p>Раздел доступен только владельцу системы.</p></div></div>' +
         '<div class="set-card" style="max-width:460px">' +
           '<h5>Подтверждение владельца</h5>' +
           '<p style="font-size:12px;color:var(--txt-dim);margin-bottom:14px">Введите код владельца, чтобы открыть панель.</p>' +
-          '<input class="fld" id="adminCode" type="password" inputmode="numeric" autocomplete="off" ' +
+          '<input class="fld" id="adminCode" type="password" autocomplete="off" ' +
             'placeholder="Код владельца" style="width:100%;letter-spacing:.28em;text-align:center;font-size:15px">' +
           '<div id="adminErr" style="margin-top:12px;font-size:12.5px;font-weight:600;color:#ff8a9b;' +
             (attempts ? '' : 'display:none') + '">' +
@@ -2969,36 +3085,45 @@ WM.register({
           '</div>';
       },
       power() {
-        const has = !!State.lockCode;
+        const hasC = hasCode(), hasP = hasPass(), hasR = !!(State.auth.rec);
         return '<div class="set-grid adm">' +
-          '<div class="set-card" style="grid-column:span 2"><h5>Пароль учётной записи</h5>' +
-            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Спрашивается сразу после кнопки питания, до появления монитора. Пользователь: ' + esc(USER) + '.</p>' +
-            '<div class="spec"><span>Состояние</span><b style="color:' + (State.userPass ? '#5cffb0' : 'var(--txt-dim)') + '">' +
-              (State.userPass ? 'пароль задан' : 'вход без пароля') + '</b></div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Код владельца</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Спрашивается при включении компьютера и при блокировке. Хранится только отпечаток — сам код система показать не может.</p>' +
+            '<div class="spec"><span>Состояние</span><b style="color:' + (hasC ? '#5cffb0' : 'var(--txt-dim)') + '">' +
+              (hasC ? 'код задан' : 'код не задан') + '</b></div>' +
             '<label style="display:block;margin:14px 0 8px">' +
-              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Новый пароль</span>' +
-              '<input class="fld" id="admUserPass" type="password" autocomplete="off" maxlength="24" ' +
-                'placeholder="например: XXXXXX" style="width:100%"></label>' +
-            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-              '<button class="btn primary" data-adm="setuserpass">Задать пароль</button>' +
-              '<button class="btn" data-adm="clearuserpass"' + (State.userPass ? '' : ' disabled') + '>Снять пароль</button>' +
-            '</div>' +
-            '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Перезагрузить → кнопка питания → пароль</b></div>' +
-          '</div>' +
-          '<div class="set-card" style="grid-column:span 2"><h5>Блокировка компьютера</h5>' +
-            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Код спрашивается при включении компьютера и при блокировке. Пока код задан, войти можно только с ним. По умолчанию: ' + esc(CODEWORD) + '.</p>' +
-            '<div class="spec"><span>Состояние</span><b style="color:' + (has ? '#5cffb0' : 'var(--txt-dim)') + '">' +
-              (has ? 'код задан' : 'код не задан') + '</b></div>' +
-            '<label style="display:block;margin:14px 0 8px">' +
-              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Код владельца (до 12 знаков)</span>' +
-              '<input class="fld" id="admLockCode" type="password" inputmode="numeric" autocomplete="off" maxlength="12" ' +
-                'placeholder="например: ' + esc(CODEWORD) + '" style="width:100%"></label>' +
+              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Новый код (не короче 4 знаков)</span>' +
+              '<input class="fld" id="admLockCode" type="password" autocomplete="off" maxlength="64" ' +
+                'placeholder="новый код" style="width:100%"></label>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
               '<button class="btn primary" data-adm="setlockcode">Задать код</button>' +
-              '<button class="btn" data-adm="clearlockcode"' + (has ? '' : ' disabled') + '>Снять код</button>' +
+              '<button class="btn" data-adm="clearlockcode"' + (hasC ? '' : ' disabled') + '>Снять код</button>' +
               '<button class="btn" data-adm="testlock">Заблокировать компьютер</button>' +
             '</div>' +
             '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Заблокировать → код владельца</b></div>' +
+          '</div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Пароль учётной записи</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Спрашивается сразу после кнопки питания, до появления монитора. Пользователь: ' + esc(USER) + '.</p>' +
+            '<div class="spec"><span>Состояние</span><b style="color:' + (hasP ? '#5cffb0' : 'var(--txt-dim)') + '">' +
+              (hasP ? 'пароль задан' : 'вход без пароля') + '</b></div>' +
+            '<label style="display:block;margin:14px 0 8px">' +
+              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Новый пароль</span>' +
+              '<input class="fld" id="admUserPass" type="password" autocomplete="off" maxlength="64" ' +
+                'placeholder="новый пароль" style="width:100%"></label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+              '<button class="btn primary" data-adm="setuserpass">Задать пароль</button>' +
+              '<button class="btn" data-adm="clearuserpass"' + (hasP ? '' : ' disabled') + '>Снять пароль</button>' +
+            '</div>' +
+            '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Перезагрузить → кнопка питания → пароль</b></div>' +
+          '</div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Код восстановления</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Помогает вернуть доступ, если код владельца забыт. Показать старый код система не может — можно задать новый: он заменит прежний.</p>' +
+            '<div class="spec"><span>Состояние</span><b style="color:' + (hasR ? '#5cffb0' : '#ffc65c') + '">' +
+              (hasR ? 'код восстановления задан' : 'кода восстановления нет') + '</b></div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
+              '<button class="btn primary" data-adm="newrecovery">' + ICO.refresh + ' Выдать новый код восстановления</button>' +
+            '</div>' +
+            '<div id="admRecBox" style="margin-top:14px"></div>' +
           '</div>' +
           '<div class="set-card" style="grid-column:span 2"><h5>Плавность работы</h5>' +
             '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Облегчённый режим убирает размытие подложек и тяжёлые анимации. Система включает его сама, если кадры проседают.</p>' +
@@ -3024,9 +3149,18 @@ WM.register({
     };
 
     function adminLogin() {
+      /* Кода владельца нет — панель открывается без проверки. */
+      if (!hasCode()) {
+        State.admin = true;
+        log_('Вход выполнен · код владельца не задан');
+        Sound.notif();
+        Notify('Панель администратора', 'Панель открыта. Совет: задайте код владельца, чтобы закрыть её.', ICO.shield, true);
+        render();
+        return;
+      }
       const inp = $('#adminCode', main);
       if (!inp) return;
-      if (inp.value.trim() === OWNER_CODE) {
+      if (Auth.check(inp.value.trim(), State.auth.code)) {
         State.admin = true; State.adminAttempts = 0;
         log_('Вход выполнен · владелец подтверждён');
         Sound.notif();
@@ -3088,37 +3222,61 @@ WM.register({
         case 'setlockcode': {
           const inp = $('#admLockCode', main);
           const code = inp ? inp.value.trim() : '';
-          if (!code) { Sound.error(); Notify('Панель администратора', 'Введите код — пустой код не сохраняется.', ICO.shield, true); return; }
-          saveLockCode(code);
+          if (code.length < 4) { Sound.error(); Notify('Панель администратора', 'Код слишком короткий — минимум 4 знака.', ICO.shield, true); return; }
+          setCode(code);
           State.locked = true;
-          log_('Задан код запуска (длина ' + code.length + ')');
+          log_('Задан код владельца (длина ' + code.length + ')');
           Sound.notif();
-          Notify('Панель администратора', 'Код запуска задан. Теперь он нужен при запуске компьютера.', ICO.shield, true);
+          Notify('Панель администратора', 'Код владельца задан. Теперь он нужен при запуске компьютера.', ICO.shield, true);
           render(); return;
         }
         case 'clearlockcode':
-          saveLockCode('');
+          State.auth.code = null;
+          saveAuth();
           State.locked = false;
-          log_('Код запуска снят');
-          Notify('Панель администратора', 'Код запуска снят. Вход без кода.', ICO.refresh, true);
+          log_('Код владельца снят');
+          Notify('Панель администратора', 'Код владельца снят. Вход без кода.', ICO.refresh, true);
           render(); return;
         case 'setuserpass': {
           const i = $('#admUserPass', main);
           const v = i ? i.value : '';
           if (!v.trim()) { Notify('Панель администратора', 'Введите пароль.', ICO.shield); return; }
-          saveUserPass(v.trim());
+          setPass(v.trim());
           log_('Пароль учётной записи изменён');
           Notify('Панель администратора', 'Пароль учётной записи сохранён. Спросится при следующем включении.', ICO.shield, true);
           render(); return;
         }
         case 'clearuserpass':
-          saveUserPass('');
+          setPass('');
           log_('Пароль учётной записи снят');
           Notify('Панель администратора', 'Пароль снят. Вход без пароля.', ICO.refresh, true);
           render(); return;
+        case 'newrecovery': {
+          const rec = Auth.recovery();
+          setRecovery(rec);
+          log_('Выдан новый код восстановления');
+          const box = $('#admRecBox', main);
+          if (box) {
+            box.innerHTML =
+              '<div class="spec"><span>Новый код</span></div>' +
+              '<div class="po-reccode" id="admRecShown" style="margin:8px 0">' + esc(rec) + '</div>' +
+              '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                '<button class="btn" id="admRecCopy">Скопировать</button>' +
+              '</div>' +
+              '<p style="font-size:11px;color:var(--txt-mute);margin-top:10px">Запишите код и держите в надёжном месте. Показать его повторно система не сможет — можно только выдать новый.</p>';
+            const cp = $('#admRecCopy', main);
+            if (cp) cp.onclick = () => {
+              try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(rec); } catch (e) { /* буфер недоступен */ }
+              cp.textContent = 'Скопировано';
+            };
+          }
+          Sound.notif();
+          Notify('Панель администратора', 'Выдан новый код восстановления. Запишите его.', ICO.shield, true);
+          return;
+        }
         case 'testlock':
           log_('Блокировка компьютера из панели');
-          State.locked = !!State.lockCode;
+          State.locked = needCode();
           lockScreen();
           return;
         case 'togglemode':
@@ -3126,7 +3284,7 @@ WM.register({
           log_('Режим оформления: ' + (State.lite ? 'облегчённый' : 'полный'));
           Notify('Панель администратора', State.lite ? 'Включён облегчённый режим.' : 'Включено полное оформление.', ICO.sparkle, true);
           render(); return;
-        case 'lock': State.locked = !!State.lockCode; lockScreen(); return;
+        case 'lock': State.locked = needCode(); lockScreen(); return;
         case 'sleep': power('sleep'); return;
         case 'restart': power('restart'); return;
         case 'shutdown': power('shutdown'); return;
@@ -3702,10 +3860,10 @@ function lockScreen() {
   tickClock();
 }
 
-/* Если владелец задал код запуска, экран блокировки просит его ввести. */
+/* Если владелец задал код, экран блокировки просит его ввести. */
 function paintLock() {
   const l = $('#lock');
-  const need = !!State.lockCode;
+  const need = needCode();
   l.classList.toggle('needcode', need);
   const hint = $('#lockHint');
   if (hint) hint.textContent = need ? 'Ваш компьютер заблокирован. Введите код для разблокировки.' : 'Нажмите Enter, чтобы войти';
@@ -3713,6 +3871,8 @@ function paintLock() {
   if (btn) btn.style.display = need ? 'none' : '';
   const err = $('#lockErr');
   if (err) err.textContent = '';
+  const f = $('#lockForgot');
+  if (f) f.textContent = State.auth.rec ? 'Забыли код?' : 'Забыли код? Восстановление';
   if (need) setTimeout(() => { const i = $('#lockCode'); if (i) { i.value = ''; i.focus(); } }, 120);
 }
 
@@ -3723,7 +3883,7 @@ function revealDesk() {
 }
 function unlock() {
   const l = $('#lock');
-  if (State.lockCode && State.locked) { tryLockCode(); return; }
+  if (needCode() && State.locked) { tryLockCode(); return; }
   State.locked = false;
   l.classList.add('gone');
   revealDesk();
@@ -3731,13 +3891,14 @@ function unlock() {
   setTimeout(() => { l.style.display = 'none'; }, 700);
 }
 
-/* Проверка кода владельца на экране запуска. */
+/* Проверка кода владельца на экране запуска. Кода в коде нет — сверяем
+   отпечаток: введённый текст прогоняем через ту же соль и повторы. */
 function tryLockCode() {
   const inp = $('#lockCode'), err = $('#lockErr');
   if (!inp) return;
   const val = inp.value.trim();
   if (!val) { if (err) err.textContent = 'Введите код.'; return; }
-  if (val === State.lockCode) {
+  if (Auth.check(val, State.auth.code)) {
     State.locked = false;
     State.adminAttempts = 0;
     if (err) err.textContent = '';
@@ -3758,10 +3919,119 @@ function tryLockCode() {
       { duration: 260 });
   }
 }
+
+/* Сброс забытого кода с экрана блокировки. Два пути:
+   1) есть код восстановления — вводим его и задаём новый код;
+   2) кода восстановления нет — сбрасываем доступ целиком, но тогда пропадут
+      файлы и настройки, поэтому честно предупреждаем и просим подтверждение. */
+function openRecovery() {
+  const l = $('#lock');
+  if (!l) return;
+  const box = $('#lockBody');
+  if (!box) return;
+  const hasRec = !!State.auth.rec;
+  box.innerHTML =
+    '<div class="lock-title" style="display:block">Восстановление доступа</div>' +
+    (hasRec
+      ? '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Введите код восстановления, который система показала при первом запуске.</div>' +
+        '<div class="lock-code" style="display:flex"><input id="recIn" type="text" autocomplete="off" placeholder="LMN-XXXX-XXXX-XXXX"><button class="lock-btn" id="recBtn">Проверить</button></div>' +
+        '<div class="lock-err" id="recErr"></div>' +
+        '<div class="lock-hint" style="margin-top:8px"><button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button></div>'
+      : '<div class="lock-warn" style="color:#ffc65c;font-size:12px;max-width:330px;line-height:1.6;text-align:center">Код восстановления не задан, поэтому вернуть доступ можно только полным сбросом. Рабочий стол, созданные файлы и настройки будут удалены — система вернётся к состоянию первого запуска.</div>' +
+        '<div class="lock-err" id="recErr"></div>' +
+        '<div class="lock-code" style="display:flex;margin-top:12px"><button class="lock-btn" id="recWipe">Сбросить и начать заново</button></div>' +
+        '<div class="lock-hint" style="margin-top:8px"><button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button></div>');
+  const back = $('#recBack');
+  if (back) back.onclick = () => { restoreLockBody(); paintLock(); };
+  const btn = $('#recBtn');
+  if (btn) btn.onclick = checkRecovery;
+  const ri = $('#recIn');
+  if (ri) {
+    ri.focus();
+    ri.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); checkRecovery(); } };
+  }
+  const wipe = $('#recWipe');
+  if (wipe) wipe.onclick = hardReset;
+}
+
+function checkRecovery() {
+  const inp = $('#recIn'), err = $('#recErr');
+  if (!inp) return;
+  const val = inp.value.trim().toUpperCase();
+  if (!val) { if (err) err.textContent = 'Введите код восстановления.'; return; }
+  if (!Auth.check(val, State.auth.rec)) {
+    Sound.error();
+    if (err) err.textContent = 'Код не подошёл. Проверьте знаки.';
+    inp.value = '';
+    inp.focus();
+    return;
+  }
+  /* Код верный: просим задать новый код владельца. */
+  const box = $('#lockBody');
+  box.innerHTML =
+    '<div class="lock-title" style="display:block">Новый код владельца</div>' +
+    '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Код восстановления принят. Задайте новый код — им будете входить в систему.</div>' +
+    '<div class="lock-code" style="display:flex"><input id="newCodeIn" type="password" autocomplete="off" placeholder="новый код, не короче 4 знаков"><button class="lock-btn" id="newCodeBtn">Сохранить</button></div>' +
+    '<div class="lock-err" id="newCodeErr"></div>';
+  const ni = $('#newCodeIn');
+  if (ni) {
+    ni.focus();
+    ni.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); saveNewCode(); } };
+  }
+  const nb = $('#newCodeBtn');
+  if (nb) nb.onclick = saveNewCode;
+}
+
+function saveNewCode() {
+  const inp = $('#newCodeIn'), err = $('#newCodeErr');
+  if (!inp) return;
+  const val = inp.value.trim();
+  if (val.length < 4) { if (err) err.textContent = 'Код слишком короткий — минимум 4 знака.'; return; }
+  setCode(val);
+  Sound.notif();
+  restoreLockBody();
+  paintLock();
+  Notify(SysInfo.get().name, 'Код изменён. Войдите с новым кодом.', ICO.shield, true);
+  const i = $('#lockCode');
+  if (i) { i.value = ''; i.focus(); }
+}
+
+/* Полный сброс: доступ и данные. Система вернётся к первому запуску. */
+function hardReset() {
+  try {
+    ['w12.auth', 'w12.sysinfo', 'w12.allApps'].forEach(k => localStorage.removeItem(k));
+    const keep = ['w12.accent', 'w12.accent2', 'w12.theme', 'w12.wall', 'w12.transp', 'w12.align', 'w12.lite'];
+    Object.keys(localStorage).forEach(k => { if (k.indexOf('w12.') === 0 && keep.indexOf(k) < 0) localStorage.removeItem(k); });
+  } catch (e) { /* хранилище недоступно */ }
+  location.reload();
+}
+
+/* Возврат экрана блокировки к обычному виду после восстановления. */
+function restoreLockBody() {
+  const box = $('#lockBody');
+  if (!box) return;
+  box.innerHTML =
+    '<div class="lock-title" id="lockTitle">Ваш компьютер заблокирован</div>' +
+    '<div class="lock-user" data-sys="user">Степан</div>' +
+    '<div class="lock-hint" id="lockHint">Нажмите Enter, чтобы войти</div>' +
+    '<div class="lock-code">' +
+      '<input id="lockCode" type="password" autocomplete="off" maxlength="64" placeholder="код владельца">' +
+      '<button class="lock-btn" id="lockCodeBtn">Открыть</button>' +
+    '</div>' +
+    '<div class="lock-err" id="lockErr"></div>' +
+    '<button class="lock-link" id="lockForgot">Забыли код?</button>';
+  SysInfo.apply();
+  const btn = $('#lockCodeBtn');
+  if (btn) btn.onclick = tryLockCode;
+  const i = $('#lockCode');
+  if (i) i.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); tryLockCode(); } };
+  const f = $('#lockForgot');
+  if (f) f.onclick = openRecovery;
+}
 function power(mode) {
   StartMenu.closeMenu(); Quick.close();
   if (mode === 'lock') {
-    State.locked = !!State.lockCode;
+    State.locked = needCode();
     lockScreen();
     return;
   }
@@ -3769,7 +4039,7 @@ function power(mode) {
   shut.classList.add('on');
   txt.textContent = mode === 'restart' ? 'Перезапуск…' : mode === 'sleep' ? 'Спящий режим…' : 'Завершение работы…';
   setTimeout(() => {
-    if (mode === 'sleep') { shut.classList.remove('on'); State.locked = !!State.lockCode; lockScreen(); return; }
+    if (mode === 'sleep') { shut.classList.remove('on'); State.locked = needCode(); lockScreen(); return; }
     if (mode === 'restart') { location.reload(); return; }
     shut.innerHTML = '<div style="text-align:center">' +
       '<div style="width:78px;height:78px;margin:0 auto 22px;opacity:.5"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg></div>' +
@@ -3791,6 +4061,9 @@ function initPowerOn() {
   po.classList.add('on');
 
   let started = false, unlocked = false;
+  /* Черновики первого запуска: код владельца и код восстановления до
+     сохранения. В хранилище попадут только отпечатки. */
+  let pendingCode = '', pendingRecovery = '';
   function start() {
     if (started) return;
     started = true;
@@ -3801,10 +4074,174 @@ function initPowerOn() {
     setTimeout(askPassword, 1100);
   }
   function askPassword() {
-    if (!State.userPass) { showMonitor(); return; }
+    /* Первый запуск: владелец ещё не задал код — предлагаем придумать свой. */
+    if (!State.auth.ready) { paintFirstRun(); return; }
+    if (!hasPass() && !hasCode()) { showMonitor(); return; }
+    paintLogin();
     po.classList.add('pass');
-    setTimeout(() => { const i = $('#poPassInput'); if (i) { i.value = ''; i.focus(); } }, 220);
+    setTimeout(() => { const i = $('#poPassInput') || $('#poCodeInput'); if (i) { i.value = ''; i.focus(); } }, 220);
   }
+  /* Экран входа: что спрашивать — решает то, что задал владелец. */
+  function paintLogin() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    const pass = hasPass(), code = hasCode();
+    let h = '<div class="avatar" data-sys="user-initial">С</div>' +
+      '<div class="po-passname" data-sys="user">Степан</div>';
+    if (pass) {
+      h += '<div class="po-passhint">Система защищена. Введите пароль учётной записи' +
+        (code ? ' или код владельца.' : '.') + '</div>' +
+        '<div class="po-passfield">' +
+          '<input id="poPassInput" type="password" autocomplete="off" maxlength="64" placeholder="пароль">' +
+          '<button class="lock-btn" id="poPassBtn">Войти</button>' +
+        '</div>' +
+        '<div class="po-paserr" id="poPassErr"></div>';
+    }
+    if (code) {
+      if (pass) h += '<div class="po-codeword">';
+      h += '<input id="poCodeInput" type="password" autocomplete="off" maxlength="64" placeholder="код владельца">' +
+        '<button class="lock-btn" id="poCodeBtn">Открыть</button>';
+      if (pass) h += '</div>';
+      h += '<div class="po-coderr" id="poCodeErr"></div>';
+    }
+    h += '<div class="po-actions">' +
+      '<button class="po-link" id="poForgot">Забыли код или пароль?</button>' +
+      (State.auth.rec ? '' : '<button class="po-link" id="poReset">Сбросить доступ</button>') +
+      '</div>';
+    card.innerHTML = h;
+    SysInfo.apply();
+    const pb = $('#poPassBtn'); if (pb) pb.onclick = tryPass;
+    const pin = $('#poPassInput');
+    if (pin) pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryPass(); } });
+    const cb = $('#poCodeBtn'); if (cb) cb.onclick = tryCode;
+    const cin = $('#poCodeInput');
+    if (cin) cin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryCode(); } });
+    const fb = $('#poForgot'); if (fb) fb.onclick = forgotOnBoot;
+    const rb = $('#poReset'); if (rb) rb.onclick = bootReset;
+  }
+
+  /* Первый запуск: владелец придумывает код, пароль и получает код
+     восстановления. Ничего этого в исходниках системы нет. */
+  function paintFirstRun() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    card.innerHTML =
+      '<div class="avatar"><svg viewBox="0 0 100 100" style="width:34px;height:34px"><use href="#winLogo"/></svg></div>' +
+      '<div class="po-passname">Первый запуск</div>' +
+      '<div class="po-passhint">Придумайте код владельца — им вы будете включать компьютер и входить в систему. Кода по умолчанию нет: система не хранит ни одного пароля в открытом виде.</div>' +
+      '<div class="po-passfield"><input id="frCode" type="password" autocomplete="off" maxlength="64" placeholder="код владельца, не короче 4 знаков"><button class="lock-btn" id="frCodeBtn">Задать</button></div>' +
+      '<div class="po-paserr" id="frErr"></div>' +
+      '<div class="po-passhint po-passhint-alt">Дальше можно будет добавить пароль учётной записи — он спросится после кнопки питания.</div>';
+    po.classList.add('pass');
+    setTimeout(() => { const i = $('#frCode'); if (i) i.focus(); }, 220);
+    const go = () => {
+      const inp = $('#frCode'), err = $('#frErr');
+      const v = inp ? inp.value.trim() : '';
+      if (v.length < 4) { Sound.error(); if (err) err.textContent = 'Код слишком короткий — минимум 4 знака.'; return; }
+      pendingCode = v;
+      paintRecovery();
+    };
+    $('#frCodeBtn').onclick = go;
+    const i = $('#frCode');
+    if (i) i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+  }
+
+  /* Показываем код восстановления — единственный способ вернуть доступ,
+     если код забудется. Показываем один раз, сохранить нужно самому. */
+  function paintRecovery() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    const rec = Auth.recovery();
+    pendingRecovery = rec;
+    card.innerHTML =
+      '<div class="po-passname">Код восстановления</div>' +
+      '<div class="po-passhint">Запишите его и держите в надёжном месте. Он понадобится, если забудете код владельца. Система хранит только отпечаток — показать код повторно она не сможет.</div>' +
+      '<div class="po-reccode" id="frRec">' + esc(rec) + '</div>' +
+      '<div class="po-actions">' +
+        '<button class="lock-btn" id="frCopy">Скопировать</button>' +
+        '<button class="lock-btn" id="frSaved">Я записал — продолжить</button>' +
+      '</div>' +
+      '<div class="po-passhint po-passhint-alt">Без этого кода и без пароля вернуть доступ можно только полным сбросом: файлы и настройки будут удалены.</div>';
+    const cp = $('#frCopy');
+    if (cp) cp.onclick = () => {
+      const t = $('#frRec') ? $('#frRec').textContent : '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t);
+      } catch (e) { /* буфер недоступен */ }
+      Sound.click();
+      cp.textContent = 'Скопировано';
+    };
+    const ok = $('#frSaved');
+    if (ok) ok.onclick = () => {
+      setOwnerCode(pendingCode, '', pendingRecovery);
+      pendingCode = ''; pendingRecovery = '';
+      Sound.notif();
+      Notify(SysInfo.get().name, 'Код владельца задан. Он понадобится при следующем включении.', ICO.shield, true);
+      passOk();
+    };
+  }
+
+  /* Забыли код или пароль прямо на экране включения. */
+  function forgotOnBoot() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    card.innerHTML =
+      '<div class="po-passname">Восстановление доступа</div>' +
+      (State.auth.rec
+        ? '<div class="po-passhint">Введите код восстановления, который система показала при первом запуске.</div>' +
+          '<div class="po-passfield"><input id="poRecIn" type="text" autocomplete="off" placeholder="LMN-XXXX-XXXX-XXXX"><button class="lock-btn" id="poRecBtn">Проверить</button></div>' +
+          '<div class="po-paserr" id="poRecErr"></div>'
+        : '<div class="po-warn">Код восстановления не задан. Вернуть доступ можно только полным сбросом — файлы и настройки будут удалены.</div>' +
+          '<div class="po-actions"><button class="lock-btn" id="poWipe">Сбросить и начать заново</button></div>') +
+      '<div class="po-actions"><button class="po-link" id="poBack">← Назад ко входу</button></div>';
+    const back = $('#poBack');
+    if (back) back.onclick = () => { paintLogin(); };
+    const wipe = $('#poWipe');
+    if (wipe) wipe.onclick = bootReset;
+    const btn = $('#poRecBtn');
+    if (btn) btn.onclick = () => {
+      const inp = $('#poRecIn'), err = $('#poRecErr');
+      const v = inp ? inp.value.trim().toUpperCase() : '';
+      if (!Auth.check(v, State.auth.rec)) {
+        Sound.error();
+        if (err) err.textContent = 'Код не подошёл. Проверьте знаки.';
+        if (inp) { inp.value = ''; inp.focus(); }
+        return;
+      }
+      paintNewCode();
+    };
+    const ri = $('#poRecIn');
+    if (ri) { ri.focus(); ri.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); if (btn) btn.click(); } }); }
+  }
+
+  /* Новый код владельца после верного кода восстановления. */
+  function paintNewCode() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    card.innerHTML =
+      '<div class="po-passname">Новый код владельца</div>' +
+      '<div class="po-passhint">Код восстановления принят. Задайте новый код — им будете входить в систему.</div>' +
+      '<div class="po-passfield"><input id="poNewIn" type="password" autocomplete="off" maxlength="64" placeholder="новый код, не короче 4 знаков"><button class="lock-btn" id="poNewBtn">Сохранить</button></div>' +
+      '<div class="po-paserr" id="poNewErr"></div>';
+    const go = () => {
+      const inp = $('#poNewIn'), err = $('#poNewErr');
+      const v = inp ? inp.value.trim() : '';
+      if (v.length < 4) { Sound.error(); if (err) err.textContent = 'Код слишком короткий — минимум 4 знака.'; return; }
+      setCode(v);
+      Sound.notif();
+      paintLogin();
+      Notify(SysInfo.get().name, 'Код изменён. Войдите с новым кодом.', ICO.shield, true);
+    };
+    $('#poNewBtn').onclick = go;
+    const i = $('#poNewIn');
+    if (i) { i.focus(); i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } }); }
+  }
+
+  function bootReset() {
+    resetAccess();
+    location.reload();
+  }
+
   /* Пароль верный — карточка улетает в монитор, и включается экран. */
   function passOk() {
     if (unlocked) return;
@@ -3815,14 +4252,13 @@ function initPowerOn() {
     Sound.open();
     setTimeout(showMonitor, 620);
   }
-  /* Код владельца уже принят при включении компьютера — пароль не спрашиваем
-     второй раз, показываем монитор сразу. */
+  /* Пароль учётной записи: сверяем отпечаток, а не текст. */
   function tryPass() {
     const inp = $('#poPassInput'), err = $('#poPassErr');
     if (!inp) return;
     const val = inp.value;
     if (!val) { if (err) err.textContent = 'Введите пароль.'; return; }
-    if (val === State.userPass) { passOk(); return; }
+    if (Auth.check(val, State.auth.pass)) { passOk(); return; }
     Sound.error();
     State.passTries = (State.passTries || 0) + 1;
     if (err) err.textContent = 'Неверный пароль. Попытка ' + State.passTries + '.';
@@ -3832,13 +4268,13 @@ function initPowerOn() {
       [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }],
       { duration: 260 });
   }
-  /* Код владельца: подходит вместо пароля. */
+  /* Код владельца: подходит вместо пароля. Сверяем отпечаток. */
   function tryCode() {
     const inp = $('#poCodeInput'), err = $('#poCodeErr');
     if (!inp) return;
     const val = inp.value.trim();
     if (!val) { if (err) err.textContent = 'Введите код владельца.'; return; }
-    if (val === State.lockCode) {
+    if (Auth.check(val, State.auth.code)) {
       if (err) err.textContent = '';
       passOk();
       return;
@@ -3871,12 +4307,6 @@ function initPowerOn() {
 
   $('#poPower').onclick = start;
   $('#poPc').onclick = start;
-  $('#poPassBtn').onclick = tryPass;
-  const pin = $('#poPassInput');
-  if (pin) pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryPass(); } });
-  $('#poCodeBtn').onclick = tryCode;
-  const cin = $('#poCodeInput');
-  if (cin) cin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryCode(); } });
   document.addEventListener('keydown', e => {
     if (po.classList.contains('on') && !started && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); start(); }
   });
@@ -4004,27 +4434,35 @@ function loadPrefs() {
     const w = localStorage.getItem('w12.wall'); if (w && WALLS.indexOf(w) >= 0) applyWall(w);
     const tr = localStorage.getItem('w12.transp'); if (tr !== null) applyTransparency(tr === '1');
     const al = localStorage.getItem('w12.align'); if (al) applyAlign(al);
-    // Код владельца. Отсутствие записи — значение по умолчанию (CODEWORD),
-    // пустая строка — владелец код снял.
-    const lc = localStorage.getItem('w12.lockcode'); if (lc !== null) State.lockCode = lc;
-    // Пароль учётной записи: храним в настройках системы, по умолчанию XXXXXX.
-    const up = localStorage.getItem('w12.userpass');
-    if (up !== null) State.userPass = up;
+    // Доступ: только отпечатки кода, пароля и кода восстановления.
+    const au = localStorage.getItem('w12.auth');
+    if (au) {
+      const a = JSON.parse(au);
+      if (a && a.ver === 1) State.auth = Object.assign({ ver: 1, ready: false, code: null, pass: null, rec: null }, a);
+    }
   } catch (e) { /* хранилище недоступно */ }
 }
-/* Пароль учётной записи. Пустая строка — вход без пароля. */
-function saveUserPass(pass) {
-  State.userPass = String(pass == null ? '' : pass);
-  try {
-    if (State.userPass) localStorage.setItem('w12.userpass', State.userPass);
-    else localStorage.removeItem('w12.userpass');
-  } catch (e) { /* хранилище недоступно */ }
-}
-/* Код запуска храним в настройках системы. Пустая строка — код снят. */
-function saveLockCode(code) {
-  State.lockCode = String(code || '').trim();
-  try { localStorage.setItem('w12.lockcode', State.lockCode); }
+/* Сохранение данных доступа. Открытых кодов здесь нет — только отпечатки. */
+function saveAuth() {
+  try { localStorage.setItem('w12.auth', JSON.stringify(State.auth)); }
   catch (e) { /* хранилище недоступно */ }
+}
+/* Владелец задаёт код при первом запуске. */
+function setOwnerCode(code, pass, recovery) {
+  State.auth.code = Auth.make(code);
+  State.auth.pass = pass ? Auth.make(pass) : null;
+  State.auth.rec = recovery ? Auth.make(recovery) : null;
+  State.auth.ready = true;
+  saveAuth();
+}
+/* Смена одного кода без затрагивания остальных. */
+function setCode(text) { State.auth.code = Auth.make(text); State.auth.ready = true; saveAuth(); }
+function setPass(text) { State.auth.pass = text ? Auth.make(text) : null; saveAuth(); }
+function setRecovery(text) { State.auth.rec = text ? Auth.make(text) : null; saveAuth(); }
+/* Полный сброс доступа: система снова попросит задать свой код. */
+function resetAccess() {
+  State.auth = { ver: 1, ready: false, code: null, pass: null, rec: null };
+  try { localStorage.removeItem('w12.auth'); } catch (e) { /* хранилище недоступно */ }
 }
 function bootSequence() {
   const TIPS = ['Инициализация ядра люмен…', 'Монтирование виртуальной ФС…', 'Запуск оконного менеджера «Плексус»…',
@@ -4165,16 +4603,18 @@ function init() {
     if (e.key === 'Enter') { e.preventDefault(); tryLockCode(); }
     e.stopPropagation();
   };
+  const lf = $('#lockForgot');
+  if (lf) lf.onclick = openRecovery;
   // При блокировке клик по фону ставит курсор в поле кода, а не пускает внутрь.
   $('#lock').onclick = e => {
-    if (e.target.closest('.lock-btn') || e.target.closest('.lock-code')) return;
-    if (State.lockCode && State.locked) { const i = $('#lockCode'); if (i) i.focus(); return; }
+    if (e.target.closest('.lock-btn') || e.target.closest('.lock-code') || e.target.closest('.lock-link')) return;
+    if (needCode() && State.locked) { const i = $('#lockCode'); if (i) i.focus(); return; }
     unlock();
   };
   document.addEventListener('keydown', e => {
     const l = $('#lock');
     if (!l || l.style.display === 'none' || l.classList.contains('gone')) return;
-    if (State.lockCode && State.locked) return;   // ждём код, Enter сам не пускает
+    if (needCode() && State.locked) return;   // ждём код, Enter сам не пускает
     if (e.key === 'Enter' || e.key === ' ') unlock();
   });
 
