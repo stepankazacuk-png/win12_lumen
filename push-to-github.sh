@@ -58,8 +58,59 @@ PROBE_SHA="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
 echo "Заливаю в $REPO, ветка $BRANCH..."
 
 # Токен передаём на один вызов, в конфиг git не пишем.
-git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" \
-  "HEAD:refs/heads/${BRANCH}" || exit 1
+PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
+
+if [ "${FORCE:-0}" = "1" ]; then
+  # История была переписана (убраны коды и пароли), поэтому обычная отправка
+  # не пройдёт: старые коммиты в родстве с новыми не состоят. Перезаписываем.
+  echo "Внимание: перезаписываю историю ветки $BRANCH (FORCE=1)."
+  git push --force "$PUSH_URL" "HEAD:refs/heads/${BRANCH}" || exit 1
+else
+  git push "$PUSH_URL" "HEAD:refs/heads/${BRANCH}" || {
+    echo
+    echo "Отправка отклонена. Если история была переписана, запустите с FORCE=1:"
+    echo "    GITHUB_TOKEN=ваш_токен FORCE=1 $0"
+    exit 1
+  }
+fi
+
+# Старый релиз хранит архив с прежними исходниками, где были коды. Удаляем
+# релиз и тег, затем собираем заново из чистых файлов — тег создастся сам.
+if [ "${FORCE:-0}" = "1" ]; then
+  echo "Обновляю релиз v1.0..."
+  python3 mkzip.py >/dev/null 2>&1 || true
+  OLD_ID="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    "https://api.github.com/repos/${REPO}/releases" \
+    | python3 -c 'import sys,json
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    d=[]
+for r in (d if isinstance(d,list) else []):
+    if r.get("tag_name")=="v1.0": print(r["id"]); break' 2>/dev/null)"
+  if [ -n "$OLD_ID" ]; then
+    curl -s -o /dev/null -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      "https://api.github.com/repos/${REPO}/releases/${OLD_ID}"
+    echo "  старый релиз удалён"
+  fi
+  curl -s -o /dev/null -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    "https://api.github.com/repos/${REPO}/git/refs/tags/v1.0"
+  NEW_ID="$(curl -s -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/releases" \
+    -d '{"tag_name":"v1.0","name":"Люмен 1.0","body":"Готовая сборка: распакуйте архив и запустите Запустить-Windows.bat (Windows) или Запустить-Linux-macOS.command (macOS/Linux). Кодов по умолчанию нет — код владельца задаётся при первом запуске.","draft":false,"prerelease":false}' \
+    | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null)"
+  if [ -n "$NEW_ID" ] && [ -f lumen.zip ]; then
+    curl -s -o /dev/null -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      -H "Content-Type: application/zip" \
+      --data-binary @lumen.zip \
+      "https://uploads.github.com/repos/${REPO}/releases/${NEW_ID}/assets?name=lumen.zip"
+    git tag -f v1.0 >/dev/null 2>&1 || true
+    echo "  релиз v1.0 собран заново с чистым архивом"
+  else
+    echo "  релиз создать не удалось — проверьте права токена на «Contents»"
+  fi
+fi
 
 echo
 echo "Готово. Осталось включить сайт:"
