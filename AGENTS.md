@@ -517,6 +517,33 @@ git reflog expire --expire=now --all && git gc --prune=now
 server.py». Остальное работает полностью: включение, вход по коду, рабочий
 стол, окна, терминал, проводник, блокнот, калькулятор, игры, музыка, настройки.
 
+### Облачная копия: релиз с архивом
+
+Кроме сайта есть релиз с прикреплённым архивом — чтобы скачать полную версию
+одним щелчком, без сборки:
+
+<https://github.com/stepankazacuk-png/win12_lumen/releases/latest> → Assets →
+`lumen.zip`
+
+Создаётся через REST (у `gh` может не быть прав, REST работает с токеном
+владельца):
+
+```bash
+TOKEN=... ; REL=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  https://api.github.com/repos/stepankazacuk-png/win12_lumen/releases \
+  -d '{"tag_name":"v1.0","name":"...","body":"..."}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/zip" \
+  --data-binary @lumen.zip \
+  "https://uploads.github.com/repos/stepankazacuk-png/win12_lumen/releases/$REL/assets?name=lumen.zip"
+```
+
+Архив заливается на `uploads.github.com`, а не на `api.github.com` — это разные
+хосты, и на втором загрузка файлов не работает.
+
+**После правки `index.html`, `styles.css`, `os.js` или `server.py` архив в
+релизе устаревает.** Пересоберите (`python3 mkzip.py`) и залейте заново:
+старый файл удалить, новый прикрепить, либо поднять новый тег `v1.1`.
+
 ### Проверка набора для Pages
 
 Набор проверен отдельно: файлы отдавались простым `http.server`, то есть без
