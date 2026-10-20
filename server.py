@@ -16,6 +16,7 @@
 import gzip
 import html as html_mod
 import http.cookiejar
+import json
 import os
 import re
 import socket
@@ -160,10 +161,23 @@ class Handler(SimpleHTTPRequestHandler):
         if '/__proxy' in (self.path or ''):
             sys.stderr.write('прокси: %s\n' % (fmt % args))
 
+    def finish(self):
+        # Сокет живого браузера передан сеансу: закрывать его здесь нельзя,
+        # иначе соединение оборвётся сразу после рукопожатия.
+        if getattr(self, 'socket_handed_over', False):
+            return
+        super().finish()
+
     # ---------- прокси ----------
     def do_GET(self):
         if self.path.startswith('/__proxy'):
             self.proxy()
+            return
+        if self.path.startswith('/__live'):
+            self.live()
+            return
+        if self.path.startswith('/__env'):
+            self.env()
             return
         super().do_GET()
 
@@ -178,6 +192,37 @@ class Handler(SimpleHTTPRequestHandler):
             self.proxy()
             return
         self.send_error(405)
+
+    def live(self):
+        """Живой браузер: настоящий Chromium на сервере."""
+        try:
+            import live
+        except Exception as e:
+            self.fail_page('Живой браузер недоступен',
+                           'Модуль live.py не загрузился: %s' % e)
+            return
+        if not live.handle(self):
+            self.fail_page('Нужен WebSocket',
+                           'Адрес /__live принимает только соединения WebSocket. '
+                           'Он используется окном браузера в системе.')
+
+    def env(self):
+        """Сведения о сервере для окна браузера: порт и наличие Chromium."""
+        import shutil
+        data = {
+            'ok': True,
+            'port': PORT,
+            'chromium': bool(shutil.which('chromium') or shutil.which('chromium-browser')
+                             or shutil.which('google-chrome')),
+            'proxy': True,
+        }
+        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
 
     def proxy(self, head=False):
         q = urllib.parse.urlsplit(self.path).query

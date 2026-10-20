@@ -7,6 +7,7 @@
 /* ------------------------------ ICONS ------------------------------------- */
 const G = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 const ICO = {
+  pc: `<svg viewBox="0 0 24 24"><path d="M12 1.5c.9 6.1 3.5 8.7 9.6 9.6-6.1.9-8.7 3.5-9.6 9.6-.9-6.1-3.5-8.7-9.6-9.6 6.1-.9 8.7-3.5 9.6-9.6z" fill="url(#lgWin)"/></svg>`,
   folder: `<svg viewBox="0 0 24 24"><path d="M2 7a2 2 0 0 1 2-2h4.6a2 2 0 0 1 1.5.7L11.4 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7z" fill="#ffc65c"/><path d="M2 9h20v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9z" fill="#ffd983"/></svg>`,
   file: `<svg viewBox="0 0 24 24"><path d="M6 2h7l6 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="#8fa3c8"/><path d="M13 2l6 6h-5a1 1 0 0 1-1-1V2z" fill="#c3d2ea"/></svg>`,
   txt: `<svg viewBox="0 0 24 24"><path d="M6 2h7l6 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="#7dd3fc"/><path d="M13 2l6 6h-5a1 1 0 0 1-1-1V2z" fill="#bae6fd"/><path d="M8 12h8M8 15h8M8 18h5" stroke="#0b3b52" stroke-width="1.3"/></svg>`,
@@ -57,12 +58,22 @@ const ICO = {
   chip: G('<rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>'),
 };
 
+/* Кодовое слово владельца. Оно же — код запуска и код разблокировки.
+   Спрашивается дважды: при включении компьютера и при блокировке. */
+const CODEWORD = 'XXXXXX';
+
 /* ------------------------------ STATE ------------------------------------- */
 const State = {
   accent: '#5cc8ff', accent2: '#7b6cff', theme: 'dark', wallpaper: 'aurora',
   align: 'center', transparency: true, volume: 62, brightness: 100,
   night: false, focus: false, tiling: false, zTop: 100, open: {}, seq: 0,
   admin: false, adminAttempts: 0, adminLog: [],
+  lockCode: CODEWORD,  // код владельца для запуска и разблокировки системы
+  locked: true,       // система заблокирована до ввода кода
+  userPass: 'XXXXXX', // пароль учётной записи: спрашивается при включении компьютера
+  passTries: 0,       // счётчик неверных попыток пароля
+  lite: false,        // облегчённый режим оформления (включается сам при просадке кадров)
+  tuned: false,       // решение о режиме уже принято
 };
 
 /* ------------------------------ UTILS ------------------------------------- */
@@ -101,6 +112,11 @@ const Sound = (() => {
   };
 })();
 
+/* Имя владельца компьютера и его домашняя папка. Меняются здесь — и больше
+   нигде, иначе имя разъедется по путям, терминалу и сведениям о системе. */
+const USER = 'Степан';
+const HOME = 'C:\\Users\\' + USER;
+
 /* ============================================================================
    ВИРТУАЛЬНАЯ ФАЙЛОВАЯ СИСТЕМА
    ========================================================================== */
@@ -108,7 +124,7 @@ const VFS = (() => {
   const tree = {
     'C:': { type: 'dir', children: {
       'Users': { type: 'dir', children: {
-        'Гость': { type: 'dir', children: {
+        [USER]: { type: 'dir', children: {
           'Документы': { type: 'dir', children: {
             'readme.txt': { type: 'file', ext: 'txt', content: 'Добро пожаловать в Люмен!\n\nЭто концептуальная веб-операционная система, работающая целиком в браузере.\nЗдесь есть оконный менеджер, виртуальная файловая система и рабочий терминал.\n\nПопробуйте: help, neofetch, ls, cat readme.txt\n' },
             'notes.md': { type: 'file', ext: 'txt', content: '# Заметки\n\n- Позвонить в орбитальный офис\n- Обновить ядро до люмен-1.4\n- Проверить снап окон (Win + стрелки)\n' },
@@ -258,7 +274,31 @@ const Apps = {};
 const WM = (() => {
   const host = $('#wins');
   const ghost = $('#snapGhost');
-  const TB_H = 52;
+
+  /* Высота панели задач задаётся в CSS и на телефоне другая, поэтому читаем её
+     из переменной, а не держим числом. */
+  let TB_H = 52;
+  const readTbH = () => {
+    const v = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tb-h'), 10);
+    if (v > 0) TB_H = v;
+  };
+  readTbH();
+
+  /* Телефон: окна открываются во весь экран — таскать их пальцем неудобно. */
+  const isPhone = () => window.matchMedia('(max-width:560px)').matches;
+  const isTouch = () => window.matchMedia('(hover:none)').matches;
+
+  /* Размеры берём у экрана монитора, а не у окна браузера: система живёт
+     внутри монитора, и окна должны считаться от его краёв. */
+  const deskBox = () => {
+    const d = $('#desk');
+    const r = d ? d.getBoundingClientRect() : null;
+    return (r && r.width > 40) ? r : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  };
+  const DW = () => Math.round(deskBox().width);
+  const DH = () => Math.round(deskBox().height);
+  const PX = e => Math.round(e.clientX - deskBox().left);
+  const PY = e => Math.round(e.clientY - deskBox().top);
 
   const register = def => { Apps[def.id] = def; };
 
@@ -274,14 +314,17 @@ const WM = (() => {
     }
     State.seq++;
     const key = def.multi ? id + '#' + State.seq : id;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const w = Math.min(def.w || 720, vw - 60), h = Math.min(def.h || 480, vh - TB_H - 60);
-    const off = (Object.keys(State.open).length % 7) * 26;
+    const vw = DW(), vh = DH();
+    // На телефоне окно занимает весь стол: тянуть и разворачивать его негде.
+    const phone = isPhone();
+    const w = phone ? vw : Math.min(def.w || 720, vw - 60);
+    const h = phone ? vh - TB_H : Math.min(def.h || 480, vh - TB_H - 60);
+    const off = phone ? 0 : (Object.keys(State.open).length % 7) * 26;
     const rec = {
-      id: key, app: id, def, node: null, body: null, minimized: false, maximized: false,
+      id: key, app: id, def, node: null, body: null, minimized: false, maximized: phone,
       prev: null, api: {}, dirty: false,
-      x: clamp((vw - w) / 2 + off - 60, 12, Math.max(12, vw - w - 12)),
-      y: clamp((vh - TB_H - h) / 2 + off - 50, 12, Math.max(12, vh - TB_H - h - 12)),
+      x: phone ? 0 : clamp((vw - w) / 2 + off - 60, 12, Math.max(12, vw - w - 12)),
+      y: phone ? 0 : clamp((vh - TB_H - h) / 2 + off - 50, 12, Math.max(12, vh - TB_H - h - 12)),
       w, h,
     };
     build(rec);
@@ -295,7 +338,7 @@ const WM = (() => {
 
   function build(rec) {
     const d = rec.def;
-    const win = el('div', 'win');
+    const win = el('div', 'win' + (rec.maximized ? ' max' : ''));
     win.style.cssText = 'left:' + rec.x + 'px;top:' + rec.y + 'px;width:' + rec.w + 'px;height:' + rec.h + 'px;z-index:' + (++State.zTop);
     win.innerHTML =
       '<div class="titlebar">' +
@@ -324,8 +367,13 @@ const WM = (() => {
     };
     const tbar = $('.titlebar', win);
     tbar.addEventListener('dblclick', e => { if (!e.target.closest('.win-ctl')) toggleMax(rec.id); });
-    tbar.addEventListener('mousedown', e => { if (!e.target.closest('.win-ctl')) startDrag(rec, e); });
-    $$('.rz', win).forEach(rz => rz.addEventListener('mousedown', e => startResize(rec, e, rz.classList[1].replace('rz-', ''))));
+    // pointerdown покрывает и мышь, и палец — на планшете окно можно тянуть.
+    tbar.addEventListener('pointerdown', e => {
+      if (e.target.closest('.win-ctl')) return;
+      if (e.pointerType === 'touch' && isPhone()) return; // на телефоне окно во весь экран
+      startDrag(rec, e);
+    });
+    $$('.rz', win).forEach(rz => rz.addEventListener('pointerdown', e => startResize(rec, e, rz.classList[1].replace('rz-', ''))));
     win.addEventListener('mousedown', () => focus(rec.id), true);
     tbar.addEventListener('contextmenu', e => {
       e.preventDefault(); focus(rec.id);
@@ -343,14 +391,31 @@ const WM = (() => {
     State.active = id;
     rec.node.style.zIndex = ++State.zTop;
     renderTaskbar();
+    applyVisibility();
   }
   function minimize(id) {
     const r = State.open[id]; if (!r) return;
     r.minimized = true; r.node.classList.add('min');
     if (State.active === id) State.active = null;
     Sound.close(); renderTaskbar();
+    applyVisibility();
   }
-  function unminimize(id) { const r = State.open[id]; if (r) { r.minimized = false; r.node.classList.remove('min'); } }
+  function unminimize(id) { const r = State.open[id]; if (r) { r.minimized = false; r.node.classList.remove('min'); applyVisibility(); } }
+
+  /* Окно сообщает приложению, видно ли его. Это важно для живого браузера:
+     пока окно свёрнуто или не в фокусе, сервер не снимает кадры, и система
+     не тратит силы впустую. */
+  function applyVisibility() {
+    const hidden = document.hidden;
+    Object.keys(State.open).forEach(k => {
+      const r = State.open[k];
+      if (!r.api || !r.api.visible) return;
+      const vis = !hidden && !r.minimized && State.active === k;
+      if (r._vis !== vis) { r._vis = vis; r.api.visible(vis); }
+    });
+  }
+  document.addEventListener('visibilitychange', applyVisibility);
+
   function toggleMin(id) {
     const r = State.open[id]; if (!r) return;
     if (r.minimized) { unminimize(id); focus(id); } else minimize(id);
@@ -379,7 +444,7 @@ const WM = (() => {
   }
 
   function detectSnap(cx, cy) {
-    const vw = window.innerWidth, vh = window.innerHeight - TB_H, M = 16;
+    const vw = DW(), vh = DH() - TB_H, M = 16;
     if (cx < M) return cy < vh * .3 ? { x: 0, y: 0, w: vw / 2, h: vh / 2 } : cy > vh * .7 ? { x: 0, y: vh / 2, w: vw / 2, h: vh / 2 } : { x: 0, y: 0, w: vw / 2, h: vh };
     if (cx > vw - M) return cy < vh * .3 ? { x: vw / 2, y: 0, w: vw / 2, h: vh / 2 } : cy > vh * .7 ? { x: vw / 2, y: vh / 2, w: vw / 2, h: vh / 2 } : { x: vw / 2, y: 0, w: vw / 2, h: vh };
     if (cy < M) return { x: 0, y: 0, w: vw, h: vh };
@@ -392,21 +457,23 @@ const WM = (() => {
     rec.node.classList.add('drag');
     let snap = null;
     const move = ev => {
-      rec.x = clamp(ox + ev.clientX - sx, -rec.w + 90, window.innerWidth - 90);
-      rec.y = clamp(oy + ev.clientY - sy, 0, window.innerHeight - 60);
+      rec.x = clamp(ox + ev.clientX - sx, -rec.w + 90, DW() - 90);
+      rec.y = clamp(oy + ev.clientY - sy, 0, DH() - 60);
       rec.node.style.left = rec.x + 'px'; rec.node.style.top = rec.y + 'px';
-      snap = State.tiling ? null : detectSnap(ev.clientX, ev.clientY);
+      snap = State.tiling ? null : detectSnap(PX(ev), PY(ev));
       if (snap) {
         ghost.style.display = 'block';
         Object.assign(ghost.style, { left: snap.x + 'px', top: snap.y + 'px', width: snap.w + 'px', height: snap.h + 'px' });
       } else ghost.style.display = 'none';
     };
     const up = () => {
-      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
       rec.node.classList.remove('drag'); ghost.style.display = 'none';
       if (snap) applyRect(rec, snap);
     };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
   }
   function applyRect(rec, r) {
     rec.node.classList.add('snapping');
@@ -430,13 +497,13 @@ const WM = (() => {
       Object.assign(rec, { x, y, w, h });
       Object.assign(rec.node.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
     };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); rec.node.classList.remove('rz'); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); rec.node.classList.remove('rz'); };
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
   }
 
   function tile(mode) {
     const list = Object.values(State.open).filter(r => !r.minimized);
-    const vw = window.innerWidth, vh = window.innerHeight - TB_H;
+    const vw = DW(), vh = DH() - TB_H;
     if (!list.length) return;
     if (mode === 'grid') {
       const cols = Math.ceil(Math.sqrt(list.length)), rows = Math.ceil(list.length / cols);
@@ -454,14 +521,36 @@ const WM = (() => {
     State.active = null;
     renderTaskbar();
   }
-  return { register, open, close, focus, minimize, toggleMin, unminimize, toggleMax, tile, minimizeAll, applyRect };
+  /* Поворот экрана и смена размера: окна на телефоне должны занять новый
+     экран целиком, иначе они останутся прежней ширины и вылезут за край. */
+  function relayout() {
+    readTbH();
+    const phone = isPhone();
+    Object.values(State.open).forEach(rec => {
+      if (phone) {
+        Object.assign(rec.node.style, { left: '0px', top: '0px', width: DW() + 'px', height: (DH() - TB_H) + 'px' });
+        Object.assign(rec, { x: 0, y: 0, w: DW(), h: DH() - TB_H, maximized: true });
+        rec.node.classList.add('max');
+      } else if (rec.maximized) {
+        Object.assign(rec.node.style, { width: '100%', height: 'calc(100% - ' + TB_H + 'px)' });
+      } else {
+        // Окно не должно оказаться за краем после уменьшения экрана.
+        const w = Math.min(rec.w, DW() - 24), h = Math.min(rec.h, DH() - TB_H - 24);
+        const x = clamp(rec.x, 0, Math.max(0, DW() - w)), y = clamp(rec.y, 0, Math.max(0, DH() - TB_H - h));
+        Object.assign(rec, { x, y, w, h });
+        Object.assign(rec.node.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      }
+    });
+  }
+
+  return { register, open, close, focus, minimize, toggleMin, unminimize, toggleMax, tile, minimizeAll, applyRect, relayout };
 })();
 
 /* ============================================================================
    КОНТЕКСТНОЕ МЕНЮ
    ========================================================================== */
 const ctxHost = $('#ctx');
-function openCtx(x, y, items) {
+function openCtx(cx, cy, items) {
   ctxHost.innerHTML = '';
   items.forEach(it => {
     if (it.sep) { ctxHost.appendChild(el('div', 'ctx-sep')); return; }
@@ -470,9 +559,13 @@ function openCtx(x, y, items) {
     ctxHost.appendChild(b);
   });
   ctxHost.classList.add('on');
+  // Меню живёт внутри рабочего стола, поэтому переводим координаты экрана
+  // в координаты стола: система нарисована внутри монитора.
+  const box = $('#desk').getBoundingClientRect();
+  const x = cx - box.left, y = cy - box.top;
   const r = ctxHost.getBoundingClientRect();
-  ctxHost.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
-  ctxHost.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+  ctxHost.style.left = Math.max(4, Math.min(x, box.width - r.width - 8)) + 'px';
+  ctxHost.style.top = Math.max(4, Math.min(y, box.height - r.height - 8)) + 'px';
 }
 const closeCtx = () => ctxHost.classList.remove('on');
 document.addEventListener('mousedown', e => { if (!e.target.closest('#ctx')) closeCtx(); });
@@ -483,7 +576,7 @@ document.addEventListener('mousedown', e => { if (!e.target.closest('#ctx')) clo
 WM.register({
   id: 'explorer', title: 'Проводник', icon: ICO.folder, w: 880, h: 540,
   init(rec, startPath) {
-    const st = { path: startPath || 'C:\\Users\\Гость', sel: null };
+    const st = { path: startPath || HOME, sel: null };
     const hist = [];
     rec.body.innerHTML = `<div class="app">
       <div class="ex-top">
@@ -501,11 +594,11 @@ WM.register({
     </div>`;
     const files = $('.files', rec.body), crumbs = $('.crumbs', rec.body), side = $('.app-side', rec.body);
     const QUICK = [
-      { t: 'Рабочий стол', p: 'C:\\Users\\Гость\\Рабочий стол' },
-      { t: 'Документы', p: 'C:\\Users\\Гость\\Документы' },
-      { t: 'Изображения', p: 'C:\\Users\\Гость\\Изображения' },
-      { t: 'Музыка', p: 'C:\\Users\\Гость\\Музыка' },
-      { t: 'Загрузки', p: 'C:\\Users\\Гость\\Загрузки' },
+      { t: 'Рабочий стол', p: HOME + '\\Рабочий стол' },
+      { t: 'Документы', p: HOME + '\\Документы' },
+      { t: 'Изображения', p: HOME + '\\Изображения' },
+      { t: 'Музыка', p: HOME + '\\Музыка' },
+      { t: 'Загрузки', p: HOME + '\\Загрузки' },
       { t: 'Локальный диск C:', p: 'C:\\' },
       { t: 'Система', p: 'C:\\Система' },
       { t: 'Program Files', p: 'C:\\Program Files' },
@@ -574,7 +667,7 @@ WM.register({
       const n = b.dataset.nav;
       if (n === 'up') { const p = VFS.parentOf(st.path); go(p.length ? 'C:\\' + p.join('\\') : 'C:\\'); }
       if (n === 'back') { const p = hist.pop(); if (p) go(p, false); }
-      if (n === 'home') go('C:\\Users\\Гость');
+      if (n === 'home') go(HOME);
       if (n === 'new') { const nm = prompt('Имя новой папки:', 'Новая папка'); if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); } }
     };
     files.oncontextmenu = e => {
@@ -599,7 +692,7 @@ WM.register({
 WM.register({
   id: 'notepad', title: 'Блокнот', icon: ICO.note, w: 720, h: 500,
   init(rec, arg) {
-    const st = { path: (arg && arg.path) || 'C:\\Users\\Гость\\Документы\\без_имени.txt' };
+    const st = { path: (arg && arg.path) || HOME + '\\Документы\\без_имени.txt' };
     const r0 = VFS.read(st.path);
     rec.body.innerHTML = `<div class="app">
       <div class="app-bar">
@@ -632,7 +725,7 @@ WM.register({
         VFS.write(st.path, ta.value); rec.dirty = false; upd(); Sound.click();
         Notify('Блокнот', 'Сохранено: ' + VFS.nameOf(st.path), ICO.note, true);
       }
-      if (a === 'new') { st.path = 'C:\\Users\\Гость\\Документы\\без_имени.txt'; ta.value = ''; rec.dirty = false; upd(); }
+      if (a === 'new') { st.path = HOME + '\\Документы\\без_имени.txt'; ta.value = ''; rec.dirty = false; upd(); }
       if (a === 'open') {
         const p = prompt('Путь к файлу:', st.path);
         if (p && VFS.node(p)) { const r = VFS.read(p); st.path = p; ta.value = r.content; rec.dirty = false; upd(); }
@@ -651,7 +744,7 @@ WM.register({
 WM.register({
   id: 'terminal', title: 'Терминал — lsh', icon: ICO.term, w: 780, h: 470,
   init(rec) {
-    const st = { cwd: 'C:\\Users\\Гость', hist: [], hi: 0 };
+    const st = { cwd: HOME, hist: [], hi: 0 };
     rec.body.innerHTML = `<div class="app">
       <div class="term"></div>
       <div class="term-in"><span class="ps1"></span><input spellcheck="false" autocomplete="off"></div>
@@ -664,6 +757,72 @@ WM.register({
     print('<span class="d">Введите «help» для списка команд.</span>');
     print('');
     prompt_();
+
+    /* Терминал отвечает на вопросы обычными словами: пользователь пишет
+       «модель компьютера» — система отвечает. Данные те же, что в «О системе»,
+       чтобы ответы не расходились с интерфейсом. */
+    const HW = {
+      model: 'ORBITAL-12',
+      cpu: 'Nt12 Core X, 16 ядер',
+      ram: '32 ГБ LPDDR6',
+      gpu: 'Плексус GPU',
+      disk: '512 ГБ NVMe, занято 248 ГБ',
+      net: 'Wi-Fi ORBITAL-5G, 1.2 Гбит/с, пинг 9 мс',
+    };
+    const spec = (t, v) => '<span class="y">' + t + ':</span> ' + v;
+
+    const FACTS = [
+      { k: ['привет', 'здравств', 'хай'], a: () => 'Здравствуйте! Спросите что угодно о компьютере: «модель компьютера», «какой процессор», «сколько ОЗУ».' },
+      { k: ['спасибо', 'благодар'], a: () => 'Пожалуйста. Обращайтесь.' },
+      { k: ['модель', 'марка', 'что за компьютер', 'какой компьютер', 'за компьютер', 'устройств', 'название компьютер'],
+        a: () => spec('Модель компьютера', '<b>' + HW.model + '</b>') },
+      { k: ['процессор', 'цп', 'cpu', 'ядер', 'ядра', 'частот'],
+        a: () => spec('Процессор', '<b>' + HW.cpu + '</b>') },
+      { k: ['видеокарт', 'видео', 'график', 'gpu', 'видюх'],
+        a: () => spec('Графика', '<b>' + HW.gpu + '</b>') },
+      { k: ['озу', 'оператив', 'памят', 'ram', 'сколько памяти'],
+        a: () => spec('Оперативная память', '<b>' + HW.ram + '</b>') },
+      { k: ['диск', 'накопит', 'ssd', 'nvme', 'жёстк', 'жестк', 'место', 'хранилищ'],
+        a: () => spec('Накопитель', '<b>' + HW.disk + '</b>') },
+      { k: ['сеть', 'вайфай', 'wi-fi', 'wifi', 'интернет', 'пинг', 'подключен'],
+        a: () => spec('Сеть', '<b>' + HW.net + '</b>') },
+      { k: ['батаре', 'батар', 'аккумулятор', 'заряд', 'питани'],
+        a: () => spec('Питание', '<b>87%</b>, работает от сети') },
+      { k: ['экран', 'монитор', 'разрешен', 'дисплей', 'герц', 'гц'],
+        a: () => spec('Экран', '<b>' + window.innerWidth + '×' + window.innerHeight + '</b>, 144 Гц') },
+      { k: ['ос', 'система', 'версия', 'какая виндовс', 'что за система'],
+        a: () => { const g = SysInfo.get(); return spec('Система', '<b>' + g.name + ' ' + g.version + '</b>, сборка ' + g.build); } },
+      { k: ['ядро', 'kernel'], a: () => spec('Ядро', '<b>' + SysInfo.get().kernel + '</b>') },
+      { k: ['оболочк', 'терминал', 'lsh'], a: () => spec('Оболочка', '<b>lsh</b> (веб)') },
+      { k: ['оконн', 'плексус'], a: () => spec('Оконный менеджер', '<b>Плексус</b>') },
+      { k: ['как меня зовут', 'кто я', 'имя', 'пользовател', 'юзер', 'логин', 'аккаунт'],
+        a: () => spec('Пользователь', '<b>' + USER + '</b>, локальная запись') },
+      { k: ['время', 'час', 'дата', 'число', 'который час'],
+        a: () => spec('Дата и время', '<b>' + new Date().toLocaleString('ru-RU') + '</b>') },
+      { k: ['аптайм', 'сколько работает', 'время работы', 'включен'],
+        a: () => spec('Аптайм', '<b>' + TaskMan.uptime() + '</b>') },
+      { k: ['тема', 'оформлен'], a: () => spec('Тема', '<b>' + State.theme + '</b>, акцент ' + State.accent) },
+      { k: ['обои', 'фон'], a: () => spec('Обои', '<b>' + (State.wall || 'aurora') + '</b>') },
+      { k: ['процесс', 'что запущено', 'загрузк'], a: () => { CMDS.ps(); return ''; } },
+      { k: ['характеристик', 'конфигурац', 'спецификац', 'о системе', 'всё', 'все', 'инфо', 'сведени', 'расскажи'],
+        a: () => { const g = SysInfo.get(); return [
+          spec('Компьютер', '<b>' + HW.model + '</b>'),
+          spec('Система', '<b>' + g.name + ' ' + g.version + '</b>, сборка ' + g.build),
+          spec('Ядро', '<b>' + g.kernel + '</b>'),
+          spec('Процессор', '<b>' + HW.cpu + '</b>'),
+          spec('Оперативная память', '<b>' + HW.ram + '</b>'),
+          spec('Графика', '<b>' + HW.gpu + '</b>'),
+          spec('Накопитель', '<b>' + HW.disk + '</b>'),
+          spec('Сеть', '<b>' + HW.net + '</b>'),
+          spec('Экран', '<b>' + window.innerWidth + '×' + window.innerHeight + '</b>, 144 Гц'),
+          spec('Пользователь', '<b>' + USER + '</b>'),
+          spec('Аптайм', '<b>' + TaskMan.uptime() + '</b>'),
+        ].join('\n'); } },
+    ];
+
+    // Приводим вопрос к простому виду: без регистра, ё и знаков препинания.
+    const norm = q => String(q || '').toLowerCase().replace(/ё/g, 'е')
+      .replace(/[^a-zа-я0-9\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
 
     const CMDS = {
       help() {
@@ -681,7 +840,12 @@ WM.register({
           '  <span class="g">wall</span> aurora|nebula|ember|mint|mono',
           '  <span class="g">open</span> &lt;app&gt;        — запустить приложение',
           '  <span class="g">calc</span> &lt;выраж.&gt;     — вычислить',
-          '  <span class="g">date</span>, <span class="g">whoami</span>, <span class="g">ver</span>, <span class="g">clear</span>, <span class="g">exit</span>'].join('\n'));
+          '  <span class="g">date</span>, <span class="g">whoami</span>, <span class="g">ver</span>, <span class="g">clear</span>, <span class="g">exit</span>',
+          '',
+          '<span class="y">Спросить словами:</span> напишите вопрос прямо так, без команды —',
+          '  <span class="g">модель компьютера</span>, <span class="g">какой процессор</span>, <span class="g">сколько ОЗУ</span>,',
+          '  <span class="g">что за система</span>, <span class="g">характеристики</span> — и терминал ответит.',
+          '  То же самое явно: <span class="g">ask</span> &lt;вопрос&gt;'].join('\n'));
       },
       ls() {
         const r = VFS.list(st.cwd);
@@ -759,7 +923,7 @@ WM.register({
         else print('<span class="r">Не найдено. Доступно: ' + Object.keys(Apps).join(', ') + '</span>');
       },
       date() { print(esc(new Date().toLocaleString('ru-RU'))); },
-      whoami() { print('windows-12\\гость'); },
+      whoami() { print(SysInfo.get().name.toLowerCase() + '\\' + USER); },
       ver() { const g = SysInfo.get(); print(g.name + ' ' + g.version + ', ядро ' + g.kernel + ', сборка ' + g.build); },
       clear() { out.innerHTML = ''; },
       exit() { WM.close(rec.id); },
@@ -767,7 +931,11 @@ WM.register({
         try { print('<span class="g">' + Function('"use strict";return (' + String(a).replace(/[^0-9+\-*/(). %]/g, '') + ')')() + '</span>'); }
         catch (e) { print('<span class="r">Ошибка выражения</span>'); }
       },
-      sudo() { print('<span class="y">Гость не входит в список sudoers. Инцидент будет зарегистрирован.</span>'); },
+      sudo() { print('<span class="y">' + USER + ' не входит в список sudoers. Инцидент будет зарегистрирован.</span>'); },
+      ask(a) {
+        if (!a) return print('<span class="d">Спросите, например: «модель компьютера»</span>');
+        if (answer(a) === null) print('<span class="r">Не знаю ответа. Попробуйте: «модель компьютера», «процессор», «ОЗУ», «система».</span>');
+      },
     };
     CMDS.dir = CMDS.ls; CMDS.type = CMDS.cat; CMDS.cls = CMDS.clear; CMDS.man = CMDS.help;
 
@@ -779,8 +947,30 @@ WM.register({
       const sp = trimmed.split(/\s+/);
       const fn = CMDS[sp[0].toLowerCase()];
       if (fn) { try { fn(sp.slice(1).join(' ')); } catch (err) { print('<span class="r">Ошибка: ' + esc(err.message) + '</span>'); } }
-      else print('<span class="r">«' + esc(sp[0]) + '» не распознано. Введите «help».</span>');
+      else {
+        // Не команда — значит вопрос. Ищем ответ по ключевым словам.
+        const ans = answer(trimmed);
+        if (ans === null) print('<span class="r">«' + esc(sp[0]) + '» не распознано. Введите «help» или спросите словами: «модель компьютера».</span>');
+      }
       out.scrollTop = out.scrollHeight;
+    }
+
+    /* Ищем самое точное совпадение: побеждает факт с самой длинной подошедшей
+       фразой. Иначе «о системе» перебивало бы «система» в коротком вопросе. */
+    function answer(q) {
+      const n = norm(q);
+      if (!n) return null;
+      let best = null, bestLen = 0;
+      FACTS.forEach(f => {
+        f.k.forEach(key => {
+          const k = norm(key);
+          if (k && n.indexOf(k) >= 0 && k.length > bestLen) { best = f; bestLen = k.length; }
+        });
+      });
+      if (!best) return null;
+      const text = best.a();
+      if (text) String(text).split('\n').forEach(l => print(l));
+      return best;
     }
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter') { run(inp.value); inp.value = ''; }
@@ -923,7 +1113,7 @@ function applyAlign(a) {
 const SysInfo = (() => {
   const DEFAULTS = {
     name: 'Люмен', version: '1.4', kernel: 'люмен-1.4-generic',
-    build: '3040', user: 'Гость',
+    build: '3040', user: USER,
   };
   const cur = { ...DEFAULTS };
   const KEY = 'w12.sysinfo';
@@ -1179,7 +1369,7 @@ WM.register({
       if (a === 'eraser') { eraser = !eraser; b.classList.toggle('primary', eraser); }
       if (a === 'fill') { g.fillStyle = color; g.fillRect(0, 0, cv.width, cv.height); }
       if (a === 'clear') { g.fillStyle = '#0d1020'; g.fillRect(0, 0, cv.width, cv.height); }
-      if (a === 'save') Notify('Paint 12', 'Рисунок сохранён в C:\\Users\\Гость\\Изображения\\figure.png', ICO.paint);
+      if (a === 'save') Notify('Paint 12', 'Рисунок сохранён в ' + HOME + '\\Изображения\\figure.png', ICO.paint);
     };
     $('#pSize', rec.body).oninput = e => { size = +e.target.value; $('#pSizeTxt', rec.body).textContent = size + ' px'; };
     $('#pColor', rec.body).oninput = e => { color = e.target.value; eraser = false; $$('.pc', rec.body).forEach(x => x.classList.remove('on')); };
@@ -1189,106 +1379,235 @@ WM.register({
 /* ============================================================================
    ПРИЛОЖЕНИЕ: МУЗЫКА (синтез через Web Audio API)
    ========================================================================== */
+/* Плеер играет настоящие записи с YouTube. Список проверен запросом к самому
+   YouTube, поэтому подписи совпадают с тем, что там лежит. Кнопки свои:
+   встроенные не вписываются в оформление системы. */
+let ytReady = null;
+function loadYT() {
+  if (ytReady) return ytReady;
+  ytReady = new Promise((res, rej) => {
+    if (window.YT && window.YT.Player) return res(window.YT);
+    window.onYouTubeIframeAPIReady = () => res(window.YT);
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => rej(new Error('нет связи с YouTube'));
+    document.head.appendChild(s);
+  });
+  return ytReady;
+}
+
+const mmss = s => {
+  s = Math.max(0, Math.floor(s || 0));
+  return Math.floor(s / 60) + ':' + pad(s % 60);
+};
+
 WM.register({
-  id: 'music', title: 'Музыка', icon: ICO.music, w: 660, h: 600,
+  id: 'music', title: 'Музыка', icon: ICO.music, w: 760, h: 640,
   init(rec) {
     const TRACKS = [
-      { n: 'Сигнал', a: 'Orbital', s: [220, 277, 330, 440], bpm: 96 },
-      { n: 'Орбита', a: 'Aurora Set', s: [196, 247, 294, 392], bpm: 84 },
-      { n: 'Ядро 12', a: 'Kernel Band', s: [262, 330, 392, 523], bpm: 112 },
+      { id: 'dQw4w9WgXcQ', n: 'Never Gonna Give You Up', a: 'Rick Astley' },
+      { id: '9bZkp7q19f0', n: 'GANGNAM STYLE', a: 'PSY' },
+      { id: 'kJQP7kiw5Fk', n: 'Despacito', a: 'Luis Fonsi' },
+      { id: 'JGwWNGJdvx8', n: 'Shape of You', a: 'Ed Sheeran' },
+      { id: 'RgKAFK5djSk', n: 'See You Again', a: 'Wiz Khalifa' },
+      { id: 'OPf0YbXqDm0', n: 'Uptown Funk', a: 'Mark Ronson' },
+      { id: 'fJ9rUzIMcZQ', n: 'Bohemian Rhapsody', a: 'Queen' },
+      { id: 'hT_nvWreIhg', n: 'Counting Stars', a: 'OneRepublic' },
+      { id: 'YQHsXMglC9A', n: 'Hello', a: 'Adele' },
+      { id: 'CevxZvSJLk8', n: 'Roar', a: 'Katy Perry' },
+      { id: '60ItHLz5WEA', n: 'Faded', a: 'Alan Walker' },
+      { id: '7wtfhZwyrcc', n: 'Believer', a: 'Imagine Dragons' },
+      { id: 'lp-EO5I60KA', n: 'Thinking Out Loud', a: 'Ed Sheeran' },
+      { id: 'SlPhMPnQ58k', n: 'Memories', a: 'Maroon 5' },
+      { id: '2Vv-BfVoq4g', n: 'Perfect', a: 'Ed Sheeran' },
+      { id: 'e-ORhEE9VVg', n: 'Blank Space', a: 'Taylor Swift' },
+      { id: 'pRpeEdMmmQ0', n: 'Waka Waka', a: 'Shakira' },
+      { id: 'ktvTqknDobU', n: 'Radioactive', a: 'Imagine Dragons' },
+      { id: 'nfWlot6h_JM', n: 'Shake It Off', a: 'Taylor Swift' },
+      { id: 'QcIy9NiNbmo', n: 'Bad Blood', a: 'Taylor Swift' },
     ];
-    let ti = 0, playing = false, step = 0, actx = null, analyser = null, gainNode = null;
-    rec.body.innerHTML = `<div class="app"><div class="mus">
-      <div class="mus-art">${ICO.music}</div>
-      <div style="text-align:center"><h3 class="t-name"></h3><p class="t-art"></p></div>
-      <canvas class="viz"></canvas>
-      <div class="mus-ctrl">
-        <button data-a="prev">${ICO.prev}</button>
-        <button data-a="play" class="play">${ICO.play}</button>
-        <button data-a="next">${ICO.next}</button>
-      </div>
-      <input type="range" id="musVol" min="0" max="100" value="${State.volume}">
-    </div></div>`;
-    const art = $('.mus-art', rec.body), canvas = $('.viz', rec.body), g = canvas.getContext('2d');
-    const nameEl = $('.t-name', rec.body), artEl = $('.t-art', rec.body);
+    let idx = 0, player = null, ready = false, playing = false, dragging = false;
 
-    function ensure() {
-      if (actx) return;
-      actx = new (window.AudioContext || window.webkitAudioContext)();
-      gainNode = actx.createGain(); gainNode.gain.value = State.volume / 100;
-      analyser = actx.createAnalyser(); analyser.fftSize = 128;
-      gainNode.connect(analyser); analyser.connect(actx.destination);
+    rec.body.innerHTML = `<div class="app"><div class="mus2">
+      <div class="mus2-stage"><div class="mus2-frame"><div id="yt-${rec.id}"></div></div></div>
+      <div class="mus2-meta"><b class="m2-name"></b><span class="m2-art"></span></div>
+      <div class="mus2-bar">
+        <span class="m2-cur mono">0:00</span>
+        <input type="range" class="m2-seek" min="0" max="1000" value="0" aria-label="Позиция">
+        <span class="m2-dur mono">0:00</span>
+      </div>
+      <div class="mus2-ctrl">
+        <button data-a="prev" title="Предыдущая">${ICO.prev}</button>
+        <button data-a="play" class="play" title="Пуск">${ICO.play}</button>
+        <button data-a="next" title="Следующая">${ICO.next}</button>
+        <span class="mus2-vol"><span class="m2-vlabel">Звук</span>
+          <input type="range" class="m2-vol" min="0" max="100" value="${State.volume}" aria-label="Громкость"></span>
+      </div>
+      <div class="mus2-list"></div>
+    </div></div>`;
+
+    const list = $('.mus2-list', rec.body);
+    const seek = $('.m2-seek', rec.body);
+    const curEl = $('.m2-cur', rec.body);
+    const durEl = $('.m2-dur', rec.body);
+    const playBtn = $('[data-a="play"]', rec.body);
+
+    list.innerHTML = TRACKS.map((t, i) =>
+      `<div class="m2-row" data-i="${i}">
+        <img src="https://i.ytimg.com/vi/${t.id}/mqdefault.jpg" alt="" loading="lazy">
+        <div class="m2-rt"><b>${esc(t.n)}</b><span>${esc(t.a)}</span></div>
+        <span class="m2-num">${i + 1}</span>
+      </div>`).join('');
+
+    function setUI() {
+      const t = TRACKS[idx];
+      $('.m2-name', rec.body).textContent = t.n;
+      $('.m2-art', rec.body).textContent = t.a;
+      $('.tb-title', rec.node).textContent = 'Музыка — ' + t.n;
+      $$('.m2-row', rec.body).forEach((r, i) => r.classList.toggle('on', i === idx));
+      curEl.textContent = '0:00'; durEl.textContent = '0:00'; seek.value = 0;
     }
-    function note(freq, t, dur, type) {
-      const o = actx.createOscillator(), gn = actx.createGain();
-      o.type = type; o.frequency.value = freq;
-      gn.gain.setValueAtTime(0, t);
-      gn.gain.linearRampToValueAtTime(.16, t + .02);
-      gn.gain.exponentialRampToValueAtTime(.001, t + dur);
-      o.connect(gn); gn.connect(gainNode); o.start(t); o.stop(t + dur + .05);
+
+    function markPlaying(on) {
+      playing = on;
+      playBtn.innerHTML = on ? ICO.pause : ICO.play;
+      playBtn.title = on ? 'Пауза' : 'Пуск';
+      rec.node.classList.toggle('mus-playing', on);
     }
-    function tick() {
-      ensure();
-      const tr = TRACKS[ti], beat = 60 / tr.bpm / 2, t = actx.currentTime + .05;
-      note(tr.s[step % tr.s.length], t, beat * 1.7, step % 4 === 0 ? 'triangle' : 'sine');
-      if (step % 4 === 0) note(tr.s[0] / 2, t, beat * 3.4, 'sine');
-      step++;
-    }
-    function draw() {
-      requestAnimationFrame(draw);
-      const w = canvas.width = canvas.clientWidth, h = canvas.height = canvas.clientHeight;
-      if (!w || !h) return;
-      g.clearRect(0, 0, w, h);
-      if (!analyser) return;
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(data);
-      const bw = w / data.length;
-      for (let i = 0; i < data.length; i++) {
-        const bh = data[i] / 255 * h * .92;
-        g.fillStyle = i % 2 ? State.accent : State.accent2;
-        g.globalAlpha = .85;
-        g.fillRect(i * bw + 1, h - bh, Math.max(1, bw - 2), bh);
+
+    function select(i, autoplay) {
+      idx = (i + TRACKS.length) % TRACKS.length;
+      clearBlocked();
+      setUI();
+      if (player && ready) {
+        if (autoplay) player.loadVideoById(TRACKS[idx].id);
+        else player.cueVideoById(TRACKS[idx].id);
       }
-      g.globalAlpha = 1;
     }
-    draw();
-    function setTrack(i, autoplay) {
-      ti = (i + TRACKS.length) % TRACKS.length; step = 0;
-      nameEl.textContent = TRACKS[ti].n;
-      artEl.textContent = TRACKS[ti].a + ' · Люмен Sessions';
-      $('.tb-title', rec.node).textContent = 'Музыка — ' + TRACKS[ti].n;
-      if (autoplay) start();
-    }
-    function start() {
-      ensure();
-      if (actx.state === 'suspended') actx.resume();
-      playing = true; art.classList.add('playing');
-      $('[data-a="play"]', rec.body).innerHTML = ICO.pause;
+
+    /* Полоса обновляется по таймеру: события плеера приходят редко, а позиция
+       нужна каждую секунду. Тянет ползунок пользователь — тогда не мешаем. */
+    function startTick() {
       clearInterval(rec.api.iv);
-      rec.api.iv = setInterval(tick, 60 / TRACKS[ti].bpm / 2 * 1000);
+      rec.api.iv = setInterval(() => {
+        if (!player || !ready || typeof player.getCurrentTime !== 'function') return;
+        const d = player.getDuration() || 0, c = player.getCurrentTime() || 0;
+        durEl.textContent = mmss(d);
+        if (!dragging) {
+          curEl.textContent = mmss(c);
+          seek.value = d ? Math.round(c / d * 1000) : 0;
+        }
+      }, 500);
     }
-    function stop() {
-      playing = false; art.classList.remove('playing');
-      $('[data-a="play"]', rec.body).innerHTML = ICO.play;
+
+    function fail(err) {
+      $('.mus2-stage', rec.body).innerHTML =
+        `<div class="mus2-off"><b>Плеер недоступен</b>
+         <p>Не удалось связаться с YouTube. Проверьте подключение к сети.</p>
+         <p class="mono">${esc(String(err && err.message || err))}</p></div>`;
+    }
+
+    /* Запись может запрещать показ в рамке (у YouTube это ошибка 150). Тогда
+       молча листать список нельзя: пользователь должен понять, что произошло,
+       и иметь выход — открыть песню в YouTube Music. Сообщение кладём накладкой
+       поверх плеера: сам плеер не трогаем, иначе выбор другой песни перестанет
+       работать. */
+    function showBlocked(t) {
+      const q = encodeURIComponent(t.n + ' ' + t.a);
+      let off = $('.mus2-off', rec.body);
+      if (!off) {
+        off = el('div', 'mus2-off');
+        $('.mus2-stage', rec.body).appendChild(off);
+      }
+      off.innerHTML =
+        `<b>Запись запрещает показ здесь</b>
+         <p>Владелец записи «${esc(t.n)}» не разрешает встраивание. Так делают многие
+            официальные клипы — это ограничение YouTube, а не системы.</p>
+         <p><a class="mus2-open" target="_blank" rel="noopener"
+               href="https://music.youtube.com/search?q=${q}">Открыть в YouTube Music</a></p>`;
+      markPlaying(false);
       clearInterval(rec.api.iv);
+      $$('.m2-row', rec.body).forEach((r, i) => r.classList.toggle('bad', i === idx));
     }
-    $('.mus-ctrl', rec.body).onclick = e => {
+
+    function clearBlocked() {
+      const off = $('.mus2-off', rec.body);
+      if (off) off.remove();
+      $$('.m2-row.bad', rec.body).forEach(r => r.classList.remove('bad'));
+    }
+
+    loadYT().then(YT => {
+      player = new YT.Player('yt-' + rec.id, {
+        videoId: TRACKS[idx].id,
+        playerVars: { controls: 0, modestbranding: 1, rel: 0, playsinline: 1, disablekb: 1, iv_load_policy: 3 },
+        events: {
+          onReady() {
+            ready = true;
+            player.setVolume(State.volume);
+            // Пока плеер поднимался, могли выбрать другую запись — ставим её.
+            if (idx !== 0) player.cueVideoById(TRACKS[idx].id);
+            setUI();
+          },
+          onStateChange(e) {
+            if (e.data === 1) { clearBlocked(); markPlaying(true); startTick(); }
+            else if (e.data === 2) { markPlaying(false); clearInterval(rec.api.iv); }
+            else if (e.data === 0) { select(idx + 1, true); }
+          },
+          onError(e) {
+            // 101 и 150 — запрет встраивания, остальное лечится повтором.
+            if (e.data === 101 || e.data === 150) showBlocked(TRACKS[idx]);
+            else {
+              Notify('Музыка', 'Запись недоступна, включаю следующую.', ICO.music, true);
+              select(idx + 1, playing);
+            }
+          },
+        },
+      });
+    }).catch(fail);
+    rec.api.yt = () => player;
+
+    $('.mus2-ctrl', rec.body).onclick = e => {
       const b = e.target.closest('[data-a]'); if (!b) return;
       Sound.click();
       const a = b.dataset.a;
-      if (a === 'play') { if (playing) stop(); else start(); }
-      if (a === 'next') setTrack(ti + 1, playing);
-      if (a === 'prev') setTrack(ti - 1, playing);
+      if (a === 'play') {
+        if (!player || !ready) return;
+        if (playing) player.pauseVideo(); else player.playVideo();
+      }
+      if (a === 'next') select(idx + 1, true);
+      if (a === 'prev') select(idx - 1, true);
     };
-    $('#musVol', rec.body).oninput = e => {
+
+    list.onclick = e => {
+      const row = e.target.closest('.m2-row'); if (!row) return;
+      Sound.click();
+      select(+row.dataset.i, true);
+    };
+
+    seek.addEventListener('pointerdown', () => { dragging = true; });
+    seek.addEventListener('pointerup', () => { dragging = false; });
+    seek.addEventListener('change', () => {
+      dragging = false;
+      if (!player || !ready) return;
+      const d = player.getDuration() || 0;
+      player.seekTo(d * (+seek.value / 1000), true);
+    });
+
+    $('.m2-vol', rec.body).oninput = e => {
       State.volume = +e.target.value;
-      if (gainNode) gainNode.gain.value = State.volume / 100;
-      $('#vol').value = State.volume;
+      if (player && ready && typeof player.setVolume === 'function') player.setVolume(State.volume);
+      const v = $('#vol'); if (v) v.value = State.volume;
     };
-    setTrack(0, false);
-    rec.api.stop = stop;
+
+    setUI();
+    rec.api.stop = () => { clearInterval(rec.api.iv); if (player && ready && player.pauseVideo) player.pauseVideo(); };
   },
-  onClose(rec) { if (rec.api.stop) rec.api.stop(); clearInterval(rec.api.iv); },
+  onClose(rec) {
+    clearInterval(rec.api.iv);
+    const yt = rec.api.yt && rec.api.yt();
+    // Звук должен умолкнуть вместе с окном, иначе играет «в никуда».
+    try { if (yt && yt.stopVideo) yt.stopVideo(); } catch (e) { /* плеер уже снят */ }
+  },
 });
 
 /* ============================================================================
@@ -1354,7 +1673,7 @@ WM.register({
           '<div style="display:flex;gap:10px;align-items:center;margin:14px 0 20px">' +
             '<div class="avatar" style="width:36px;height:36px;font-size:13px">' + esc(MAIL[sel].f.charAt(0)) + '</div>' +
             '<div><b style="font-size:12.5px">' + esc(MAIL[sel].f) + '</b>' +
-            '<div style="font-size:11px;color:var(--txt-dim)">кому: гость@windows-12 · ' + esc(MAIL[sel].t) + '</div></div></div>' +
+            '<div style="font-size:11px;color:var(--txt-dim)">кому: ' + USER.toLowerCase() + '@lumen · ' + esc(MAIL[sel].t) + '</div></div></div>' +
           '<p style="font-size:13px;line-height:1.75;color:var(--txt-dim)">' + esc(MAIL[sel].b) + '</p>' +
           '<div style="margin-top:24px;display:flex;gap:10px">' +
             '<button class="btn primary" data-r="reply">Ответить</button>' +
@@ -2022,7 +2341,7 @@ WM.register({
   init(rec) {
     const CHECKS = [
       { t: 'Защита от вирусов и угроз', s: 'Активна · базы обновлены', ok: true },
-      { t: 'Безопасность аккаунта', s: 'Локальная учётная запись «Гость»', ok: true },
+      { t: 'Безопасность аккаунта', s: 'Локальная учётная запись «' + USER + '»', ok: true },
       { t: 'Брандмауэр и сеть', s: 'Профиль ORBITAL-5G защищён', ok: true },
       { t: 'Управление приложениями', s: 'Контроль SmartScreen включён', ok: true },
       { t: 'Изоляция ядра', s: 'Виртуализация памяти включена', ok: true },
@@ -2063,15 +2382,35 @@ WM.register({
    ПРИЛОЖЕНИЕ: ПАРАМЕТРЫ
    ========================================================================== */
 /* ------------------------------ БРАУЗЕР ----------------------------------- */
-/* Сайты открываются через серверный прокси /__proxy. Сервер сам скачивает
-   страницу, убирает запрет на показ в рамке и отдаёт её как свою. Поэтому
-   работают и Google, и YouTube, которые напрямую в рамку не пускают. */
-const proxyUrl = u => '/__proxy?u=' + encodeURIComponent(u);
+/* Настоящий браузер. На сервере запускается Chromium, он сам открывает сайты,
+   а окно показывает его экран. Мышь и клавиатура уходят обратно в Chromium.
+   Для сайта это обычный браузер, поэтому работают и поиск Google, и видео на
+   YouTube — то, что через прокси не работало.
+
+   Если сервер не запущен (файл открыт напрямую), окно переходит в простой
+   режим: страницы показываются через серверный прокси /__proxy. */
+
+const SERVER_INFO = { known: false, ok: false, port: 12000, chromium: false };
+const API = {
+  liveBase() {
+    // Открыто с сервера — берём тот же адрес. Открыто как файл — идём на порт сервера.
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return proto + '//' + location.host + '/__live';
+    }
+    return 'ws://' + (location.hostname || 'localhost') + ':' + SERVER_INFO.port + '/__live';
+  },
+  env() {
+    return fetch('/__env', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { SERVER_INFO.known = true; SERVER_INFO.ok = !!d.ok; SERVER_INFO.port = d.port || 12000; SERVER_INFO.chromium = !!d.chromium; return d; })
+      .catch(() => { SERVER_INFO.known = true; return null; });
+  },
+};
 
 WM.register({
-  id: 'browser', title: 'Браузер', icon: ICO.globe, w: 1080, h: 690,
+  id: 'browser', title: 'Браузер', icon: ICO.globe, w: 1120, h: 720,
   init(rec) {
-    const HOME = 'browser.html';
     const QUICK = [
       { t: 'Google', u: 'https://www.google.com/' },
       { t: 'YouTube', u: 'https://www.youtube.com/' },
@@ -2080,146 +2419,288 @@ WM.register({
       { t: 'ВКонтакте', u: 'https://vk.com/' },
       { t: 'Кинопоиск', u: 'https://www.kinopoisk.ru/' },
       { t: 'Гитхаб', u: 'https://github.com/' },
-      { t: 'Викисловарь', u: 'https://ru.wiktionary.org/' },
       { t: 'Погода', u: 'https://yandex.ru/pogoda/' },
       { t: 'Архив', u: 'https://web.archive.org/' },
     ];
-
-    const st = { url: HOME, hist: [], idx: -1, loading: false, real: '' };
+    const MOD = { 1: 1, 2: 2, 4: 8 };   // Alt, Ctrl, Meta — как ждёт Chromium
 
     rec.body.innerHTML = `<div class="app br">
       <div class="app-bar br-bar">
         <button class="btn" data-br="back" title="Назад">${ICO.prev}</button>
         <button class="btn" data-br="fwd" title="Вперёд">${ICO.next}</button>
         <button class="btn" data-br="reload" title="Обновить">${ICO.refresh}</button>
-        <button class="btn" data-br="home" title="Домой">${ICO.disk}</button>
-        <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес или запрос — поиск идёт через Google">
+        <button class="btn" data-br="home" title="Начальная страница">${ICO.globe}</button>
+        <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес сайта или запрос — поиск идёт через Google">
         <button class="btn primary" data-br="go">Перейти</button>
-        <button class="btn" data-br="out" title="Открыть в новой вкладке браузера">${ICO.link}</button>
       </div>
       <div class="br-marks"></div>
       <div class="br-stage">
-        <div class="br-state" id="brState"><span class="br-spin"></span>Загрузка…</div>
-        <iframe class="br-frame" id="brFrame" referrerpolicy="no-referrer"></iframe>
+        <canvas class="br-canvas" id="brCanvas" tabindex="0"></canvas>
+        <div class="br-state" id="brState"><span class="br-spin"></span><span id="brStateText">Подключение к серверу…</span></div>
       </div>
       <div class="br-foot">
-        <span id="brStatus">Готово</span>
+        <span id="brStatus">Подключение…</span>
         <span class="spacer"></span>
-        <span class="br-chip">прокси включён</span>
-        <span id="brCount"></span>
+        <span class="br-chip" id="brMode">живой режим</span>
+        <span id="brHost"></span>
       </div>
     </div>`;
 
     const urlIn = $('#brUrl', rec.body);
-    const frame = $('#brFrame', rec.body);
+    const canvas = $('#brCanvas', rec.body);
     const state = $('#brState', rec.body);
+    const stateText = $('#brStateText', rec.body);
     const status = $('#brStatus', rec.body);
-    const count = $('#brCount', rec.body);
+    const modeChip = $('#brMode', rec.body);
+    const hostOut = $('#brHost', rec.body);
     const marks = $('.br-marks', rec.body);
+    const ctx = canvas.getContext('2d');
 
     marks.innerHTML = QUICK.map(b =>
       '<button class="br-mark" data-u="' + esc(b.u) + '" title="' + esc(b.u) + '">' + esc(b.t) + '</button>').join('');
 
-    // Что считаем адресом, а что — поисковым запросом.
+    const st = {
+      mode: 'live',      // 'live' — настоящий Chromium, 'proxy' — простой режим
+      url: '',           // текущий адрес
+      input: '',         // что набрано в адресной строке
+      title: '',
+      loading: false,
+      back: false, fwd: false,
+      ready: false,
+      sent: 0, shown: 0, lastAt: 0,
+    };
+    let ws = null, tries = 0, stopped = false, wake = null, wakeT = null;
+
+    const hostOf = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u || ''; } };
+    const niceUrl = u => (u === 'about:blank' ? '' : u || '');
+
+    /* ---------- картинка ---------- */
+    function draw(blob) {
+      if (!blob || !blob.size) return;
+      createImageBitmap(blob).then(bm => {
+        if (canvas.width !== bm.width || canvas.height !== bm.height) {
+          canvas.width = bm.width; canvas.height = bm.height;
+        }
+        ctx.drawImage(bm, 0, 0);
+        bm.close && bm.close();
+        st.shown++;
+        hideState();
+      }).catch(() => {});
+    }
+
+    function showState(text, spin) {
+      state.classList.add('on');
+      stateText.textContent = text;
+      state.querySelector('.br-spin').style.display = spin === false ? 'none' : '';
+    }
+    function hideState() { state.classList.remove('on'); }
+
+    /* ---------- связь с сервером ---------- */
+    function connect(url) {
+      if (stopped) return;
+      if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+      st.ready = false;
+      tries++;
+      showState(tries === 1 ? 'Подключение к серверу…' : 'Повторное подключение…');
+      let sock;
+      try { sock = new WebSocket(API.liveBase() + '?url=' + encodeURIComponent(url || 'about:blank')); }
+      catch (e) { fallback('Не удалось открыть соединение с сервером.'); return; }
+      sock.binaryType = 'arraybuffer';
+      ws = sock;
+
+      sock.onmessage = e => {
+        if (typeof e.data !== 'string') { draw(new Blob([e.data], { type: 'image/jpeg' })); return; }
+        let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+        if (m.t === 'ready') {
+          st.ready = true; tries = 0;
+          canvas.width = m.width; canvas.height = m.height;
+          status.textContent = 'Готово';
+          modeChip.textContent = 'живой режим';
+          modeChip.classList.remove('warn');
+          hideState();
+          send({ t: 'nav', url: url || 'about:blank' });
+        } else if (m.t === 'state') {
+          st.url = m.url || st.url;
+          st.title = m.title || '';
+          st.loading = !!m.loading;
+          st.back = !!m.back; st.fwd = !!m.fwd;
+          if (document.activeElement !== urlIn) urlIn.value = niceUrl(st.url);
+          hostOut.textContent = hostOf(st.url);
+          markActive(st.url);
+          status.textContent = st.loading ? 'Загрузка…' : 'Готово';
+        } else if (m.t === 'dialog') {
+          status.textContent = 'Страница спросила: ' + (m.text || '').slice(0, 60);
+        } else if (m.t === 'error') {
+          if (m.fallback) { fallback(m.text); return; }
+          status.textContent = m.text || 'Ошибка';
+        }
+      };
+      sock.onclose = () => {
+        if (stopped || st.mode !== 'live') return;
+        if (st.ready && tries <= 3) {
+          status.textContent = 'Связь прервана, восстанавливаю…';
+          setTimeout(() => connect(st.url || 'about:blank'), 600);
+        } else if (tries > 3) {
+          fallback('Сервер не отвечает. Нужен запущенный server.py.');
+        }
+      };
+      sock.onerror = () => {};
+    }
+
+    function send(o) {
+      if (!ws || ws.readyState !== 1) return;
+      try { ws.send(JSON.stringify(o)); } catch (e) {}
+    }
+
+    /* ---------- простой режим (прокси) ---------- */
+    function fallback(reason) {
+      st.mode = 'proxy';
+      stopped = true;
+      if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+      canvas.style.display = 'none';
+      modeChip.textContent = 'простой режим';
+      modeChip.classList.add('warn');
+      showState(reason || 'Сервер недоступен.', false);
+      status.textContent = 'Простой режим';
+      hostOut.textContent = '';
+    }
+
+    /* ---------- переходы ---------- */
     function normalize(v) {
       const s = String(v || '').trim();
-      if (!s || s === HOME) return HOME;
+      if (!s || s === 'about:blank') return 'https://www.google.com/';
       if (/^https?:\/\//i.test(s)) return s;
       if (/^[\w-]+(\.[\w-]+)+([/?#:]|$)/.test(s) && s.indexOf(' ') < 0) return 'https://' + s;
       return 'https://www.google.com/search?q=' + encodeURIComponent(s);
     }
-    const hostOf = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u; } };
-
+    function go(v) { Sound.click(); const u = normalize(v); st.url = u; st.input = u; send({ t: 'nav', url: u }); }
     function markActive(u) {
       $$('.br-mark', marks).forEach(b => b.classList.toggle('on', hostOf(b.dataset.u) === hostOf(u)));
     }
 
-    function paintError(url, reason) {
-      state.classList.add('on');
-      state.innerHTML = '<div class="br-block"><b>Сайт не открылся</b>' +
-        '<p>' + esc(reason || 'Прокси не смог получить страницу.') + '</p>' +
-        '<button class="btn primary" id="brOut2">Открыть в новой вкладке</button></div>';
-      $('#brOut2', rec.body).onclick = () => window.open(url, '_blank', 'noopener');
+    /* ---------- мышь и клавиатура ---------- */
+    function point(e) {
+      const r = canvas.getBoundingClientRect();
+      return {
+        x: Math.round((e.clientX - r.left) * canvas.width / Math.max(1, r.width)),
+        y: Math.round((e.clientY - r.top) * canvas.height / Math.max(1, r.height)),
+      };
+    }
+    function mods(e) { return (e.altKey ? MOD[1] : 0) + (e.ctrlKey ? MOD[2] : 0) + (e.metaKey ? MOD[4] : 0); }
+    function btn(e) {
+      if (e.button === 0) return { button: 'left', mask: 1 };
+      if (e.button === 1) return { button: 'middle', mask: 4 };
+      return { button: 'right', mask: 2 };
     }
 
-    let failsafe = null;
-    function load(u, push) {
-      const url = normalize(u);
-      st.url = url;
-      urlIn.value = url === HOME ? '' : url;
-      st.loading = true;
-      state.classList.add('on');
-      state.innerHTML = '<span class="br-spin"></span>Загрузка…';
-      status.textContent = url === HOME ? 'Начальная страница' : 'Подключение к ' + hostOf(url);
-      frame.src = url === HOME ? HOME : proxyUrl(url);
-      if (push !== false) {
-        st.hist = st.hist.slice(0, st.idx + 1);
-        st.hist.push(url);
-        st.idx = st.hist.length - 1;
-      }
-      clearTimeout(failsafe);
-      failsafe = setTimeout(() => {
-        if (!st.loading) return;
-        st.loading = false;
-        paintError(url, 'Сайт отвечает слишком долго. Возможно, он недоступен.');
-        status.textContent = 'Нет ответа';
-      }, 30000);
-    }
+    let dragging = false;
+    canvas.addEventListener('mousemove', e => {
+      const p = point(e);
+      if (dragging) send({ t: 'mouse', type: 'mouseMoved', x: p.x, y: p.y, button: dragging, buttons: MOD.mask || 1, modifiers: mods(e) });
+      else send({ t: 'mouse', type: 'mouseMoved', x: p.x, y: p.y, button: 'none', buttons: 0, modifiers: mods(e) });
+    });
+    canvas.addEventListener('mousedown', e => {
+      e.preventDefault(); canvas.focus();
+      const p = point(e), b = btn(e);
+      dragging = b.button;
+      send({ t: 'mouse', type: 'mousePressed', x: p.x, y: p.y, button: b.button, buttons: b.mask, clickCount: 1, modifiers: mods(e) });
+    });
+    canvas.addEventListener('mouseup', e => {
+      const p = point(e), b = btn(e);
+      dragging = false;
+      send({ t: 'mouse', type: 'mouseReleased', x: p.x, y: p.y, button: b.button, buttons: 0, clickCount: 1, modifiers: mods(e) });
+    });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const p = point(e);
+      send({ t: 'mouse', type: 'mouseWheel', x: p.x, y: p.y, dx: e.deltaX, dy: e.deltaY, modifiers: mods(e) });
+    }, { passive: false });
+    canvas.addEventListener('dblclick', e => {
+      const p = point(e), b = btn(e);
+      send({ t: 'mouse', type: 'mousePressed', x: p.x, y: p.y, button: b.button, buttons: b.mask, clickCount: 2, modifiers: mods(e) });
+      send({ t: 'mouse', type: 'mouseReleased', x: p.x, y: p.y, button: b.button, buttons: 0, clickCount: 2, modifiers: mods(e) });
+    });
 
-    // Проксированные страницы того же источника, поэтому адрес читается прямо.
-    frame.onload = () => {
-      clearTimeout(failsafe);
-      st.loading = false;
-      let real = '', err = '';
-      try {
-        const d = frame.contentDocument;
-        if (d) {
-          const m = d.querySelector('meta[name="x-proxy-url"]');
-          if (m) real = m.getAttribute('content') || '';
-          const e = d.querySelector('meta[name="x-proxy-error"]');
-          if (e) err = (d.body ? d.body.innerText : '').trim().slice(0, 200);
-          if (!real && !m) real = d.location.href;
-        }
-      } catch (e) { real = ''; }
-
-      if (err) { paintError(st.url, err); status.textContent = 'Ошибка сайта'; return; }
-      state.classList.remove('on');
-      if (real && !/about:blank/.test(real)) {
-        st.real = real;
-        st.url = real;
-        if (!/browser\.html/.test(real)) { urlIn.value = real; urlIn.title = real; }
-        status.textContent = 'Загружено';
-        count.textContent = hostOf(real);
-        markActive(real);
-      } else {
-        status.textContent = 'Загружено';
-      }
+    // Клавиши уходят в Chromium, когда окно активно. Система зовёт эти функции
+    // сама (os.js отдаёт клавиши активному окну), поэтому обработчиков на
+    // canvas не вешаем — иначе клавиша приходила бы дважды.
+    rec.api.keys = key => {
+      if (st.mode !== 'live' || !st.ready) return false;
+      if (key === 'Escape' || key === 'F5') return false;      // пусть система обработает
+      if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
+      send({ t: 'key', type: 'keyDown', key });
+      return true;
+    };
+    rec.api.keyup = key => {
+      if (st.mode !== 'live' || !st.ready) return false;
+      if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
+      send({ t: 'key', type: 'keyUp', key });
+      return true;
     };
 
-    function go(v, push) { Sound.click(); load(v, push); }
-    function back() { if (st.idx > 0) { st.idx--; load(st.hist[st.idx], false); } }
-    function fwd() { if (st.idx < st.hist.length - 1) { st.idx++; load(st.hist[st.idx], false); } }
+    /* Окно не в фокусе или свёрнуто — просим сервер не снимать кадры.
+       Так система не тратит силы на то, чего не видно. */
+    rec.api.visible = vis => {
+      if (st.mode !== 'live' || !st.ready) return;
+      send({ t: vis ? 'resume' : 'pause' });
+      if (vis) fit();
+    };
 
+    /* ---------- адресная строка ---------- */
+    urlIn.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); go(urlIn.value); urlIn.blur(); }
+    };
+    urlIn.onfocus = () => { urlIn.select(); };
+
+    /* ---------- панель ---------- */
     $('.br-bar', rec.body).onclick = e => {
       const b = e.target.closest('[data-br]'); if (!b) return;
       const a = b.dataset.br;
       if (a === 'go') go(urlIn.value);
-      if (a === 'back') back();
-      if (a === 'fwd') fwd();
-      if (a === 'reload') load(st.url, false);
-      if (a === 'home') go(HOME);
-      if (a === 'out') window.open(st.url === HOME ? HOME : st.url, '_blank', 'noopener');
+      if (a === 'back') send({ t: 'back' });
+      if (a === 'fwd') send({ t: 'forward' });
+      if (a === 'reload') send({ t: 'reload' });
+      if (a === 'home') { st.url = ''; send({ t: 'nav', url: 'https://www.google.com/' }); }
     };
-    urlIn.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(urlIn.value); } };
     marks.onclick = e => {
       const b = e.target.closest('.br-mark'); if (!b) return;
-      go(b.dataset.u);
+      Sound.click();
+      st.url = b.dataset.u;
+      send({ t: 'nav', url: b.dataset.u });
     };
 
-    rec.api.open = u => load(u);
-    rec.api.home = () => load(HOME);
-    load(HOME);
+    /* ---------- размер экрана ---------- */
+    function fit() {
+      const r = canvas.getBoundingClientRect();
+      if (st.mode !== 'live' || !st.ready || r.width < 50) return;
+      // Предел, чтобы снимок на сервере не был огромным.
+      const w = Math.min(1600, Math.round(r.width));
+      const h = Math.min(1000, Math.round(r.height));
+      send({ t: 'resize', w: w, h: h });
+    }
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => { clearTimeout(wakeT); wakeT = setTimeout(fit, 320); });
+      ro.observe(canvas);
+      rec.api.disposers = rec.api.disposers || [];
+      rec.api.disposers.push(() => ro.disconnect());
+    }
+
+    /* ---------- запуск ---------- */
+    API.env().then(() => {
+      if (SERVER_INFO.known && !SERVER_INFO.ok) {
+        fallback('Сервер не запущен. Откройте систему через server.py.');
+        return;
+      }
+      connect('https://www.google.com/');
+      setTimeout(fit, 900);
+    });
+
+    rec.api.open = u => { st.mode = 'live'; stopped = false; tries = 0; canvas.style.display = ''; connect(normalize(u)); };
+    rec.api.home = () => rec.api.open('https://www.google.com/');
+    rec.api.dispose = () => { stopped = true; if (ws) { try { ws.close(); } catch (e) {} } };
   },
+  onClose(rec) { if (rec.api.dispose) rec.api.dispose(); },
 });
 
 WM.register({
@@ -2238,7 +2719,7 @@ WM.register({
       '<div class="app-side">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:10px 8px 16px">' +
           '<div class="avatar" style="width:34px;height:34px;font-size:13px">Г</div>' +
-          '<div><b style="font-size:12.5px">Гость</b><div style="font-size:10.5px;color:var(--txt-dim)">Локальная запись</div></div></div>' +
+          '<div><b style="font-size:12.5px">' + USER + '</b><div style="font-size:10.5px;color:var(--txt-dim)">Локальная запись</div></div></div>' +
         SEC.map(s => '<button class="side-i ' + (s.id === sec ? 'on' : '') + '" data-s="' + s.id + '">' + s.i + '<span>' + s.t + '</span></button>').join('') +
       '</div><div class="app-main"></div></div>';
     const main = $('.app-main', rec.body);
@@ -2488,14 +2969,50 @@ WM.register({
           '</div>';
       },
       power() {
+        const has = !!State.lockCode;
         return '<div class="set-grid adm">' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Пароль учётной записи</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Спрашивается сразу после кнопки питания, до появления монитора. Пользователь: ' + esc(USER) + '.</p>' +
+            '<div class="spec"><span>Состояние</span><b style="color:' + (State.userPass ? '#5cffb0' : 'var(--txt-dim)') + '">' +
+              (State.userPass ? 'пароль задан' : 'вход без пароля') + '</b></div>' +
+            '<label style="display:block;margin:14px 0 8px">' +
+              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Новый пароль</span>' +
+              '<input class="fld" id="admUserPass" type="password" autocomplete="off" maxlength="24" ' +
+                'placeholder="например: XXXXXX" style="width:100%"></label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+              '<button class="btn primary" data-adm="setuserpass">Задать пароль</button>' +
+              '<button class="btn" data-adm="clearuserpass"' + (State.userPass ? '' : ' disabled') + '>Снять пароль</button>' +
+            '</div>' +
+            '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Перезагрузить → кнопка питания → пароль</b></div>' +
+          '</div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Блокировка компьютера</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Код спрашивается при включении компьютера и при блокировке. Пока код задан, войти можно только с ним. По умолчанию: ' + esc(CODEWORD) + '.</p>' +
+            '<div class="spec"><span>Состояние</span><b style="color:' + (has ? '#5cffb0' : 'var(--txt-dim)') + '">' +
+              (has ? 'код задан' : 'код не задан') + '</b></div>' +
+            '<label style="display:block;margin:14px 0 8px">' +
+              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Код владельца (до 12 знаков)</span>' +
+              '<input class="fld" id="admLockCode" type="password" inputmode="numeric" autocomplete="off" maxlength="12" ' +
+                'placeholder="например: ' + esc(CODEWORD) + '" style="width:100%"></label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+              '<button class="btn primary" data-adm="setlockcode">Задать код</button>' +
+              '<button class="btn" data-adm="clearlockcode"' + (has ? '' : ' disabled') + '>Снять код</button>' +
+              '<button class="btn" data-adm="testlock">Заблокировать компьютер</button>' +
+            '</div>' +
+            '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Заблокировать → код владельца</b></div>' +
+          '</div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Плавность работы</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Облегчённый режим убирает размытие подложек и тяжёлые анимации. Система включает его сама, если кадры проседают.</p>' +
+            '<div class="spec"><span>Режим</span><b>' + (State.lite ? 'облегчённый' : 'полный') + '</b></div>' +
+            '<button class="btn" data-adm="togglemode" style="margin-top:12px">' +
+              (State.lite ? 'Включить полное оформление' : 'Включить облегчённый режим') + '</button>' +
+          '</div>' +
           '<div class="set-card" style="grid-column:span 2"><h5>Управление питанием</h5><div class="qs-chips" style="margin-top:6px">' +
             '<button class="chip" data-adm="lock">' + ICO.shield + ' Блокировать экран</button>' +
             '<button class="chip" data-adm="sleep">' + ICO.moon + ' Спящий режим</button>' +
             '<button class="chip" data-adm="restart">' + ICO.power + ' Перезапуск</button>' +
             '<button class="chip" data-adm="shutdown">' + ICO.power + ' Выключить</button>' +
             '<button class="chip" data-adm="signout">' + ICO.x + ' Выйти из панели</button>' +
-          '</div><p style="font-size:11.5px;color:var(--txt-dim);margin-top:14px">Перезапуск и выключение перезагружают страницу: виртуальная ФС сбрасывается к исходной, настройки сохраняются.</p></div></div>';
+          '</div><p style="font-size:11.5px;color:var(--txt-dim);margin-top:14px">Перезапуск и выключение перезагружают страницу: виртуальная ФС сбрасывается к исходной, настройки и код сохраняются.</p></div></div>';
       },
       log() {
         const rows = (State.adminLog || []).slice().reverse();
@@ -2568,7 +3085,48 @@ WM.register({
           Notify('Панель администратора', 'Файловая система восстановлена.', ICO.refresh, true);
           render(); return;
         case 'clearlog': State.adminLog = []; render(); return;
-        case 'lock': power('lock'); return;
+        case 'setlockcode': {
+          const inp = $('#admLockCode', main);
+          const code = inp ? inp.value.trim() : '';
+          if (!code) { Sound.error(); Notify('Панель администратора', 'Введите код — пустой код не сохраняется.', ICO.shield, true); return; }
+          saveLockCode(code);
+          State.locked = true;
+          log_('Задан код запуска (длина ' + code.length + ')');
+          Sound.notif();
+          Notify('Панель администратора', 'Код запуска задан. Теперь он нужен при запуске компьютера.', ICO.shield, true);
+          render(); return;
+        }
+        case 'clearlockcode':
+          saveLockCode('');
+          State.locked = false;
+          log_('Код запуска снят');
+          Notify('Панель администратора', 'Код запуска снят. Вход без кода.', ICO.refresh, true);
+          render(); return;
+        case 'setuserpass': {
+          const i = $('#admUserPass', main);
+          const v = i ? i.value : '';
+          if (!v.trim()) { Notify('Панель администратора', 'Введите пароль.', ICO.shield); return; }
+          saveUserPass(v.trim());
+          log_('Пароль учётной записи изменён');
+          Notify('Панель администратора', 'Пароль учётной записи сохранён. Спросится при следующем включении.', ICO.shield, true);
+          render(); return;
+        }
+        case 'clearuserpass':
+          saveUserPass('');
+          log_('Пароль учётной записи снят');
+          Notify('Панель администратора', 'Пароль снят. Вход без пароля.', ICO.refresh, true);
+          render(); return;
+        case 'testlock':
+          log_('Блокировка компьютера из панели');
+          State.locked = !!State.lockCode;
+          lockScreen();
+          return;
+        case 'togglemode':
+          applyLite(!State.lite, true);
+          log_('Режим оформления: ' + (State.lite ? 'облегчённый' : 'полный'));
+          Notify('Панель администратора', State.lite ? 'Включён облегчённый режим.' : 'Включено полное оформление.', ICO.sparkle, true);
+          render(); return;
+        case 'lock': State.locked = !!State.lockCode; lockScreen(); return;
         case 'sleep': power('sleep'); return;
         case 'restart': power('restart'); return;
         case 'shutdown': power('shutdown'); return;
@@ -2589,7 +3147,7 @@ WM.register({
         'Объектов на рабочем столе: ' + deskItems.length,
         'Тема: ' + State.theme + ' · акцент: ' + State.accent + ' · обои: ' + State.wallpaper,
         '', 'Приложения: ' + Object.keys(Apps).join(', ')].join('\n');
-      const path = 'C:\\Users\\Гость\\Документы\\отчёт_администратора.txt';
+      const path = HOME + '\\Документы\\отчёт_администратора.txt';
       const r = VFS.write(path, rep);
       if (r.ok) {
         log_('Отчёт выгружен в ' + path);
@@ -2643,6 +3201,8 @@ WM.register({
     };
     main.onkeydown = e => {
       if (e.key === 'Enter' && e.target.id === 'adminCode') { e.preventDefault(); adminLogin(); }
+      if (e.key === 'Enter' && e.target.id === 'admLockCode') { e.preventDefault(); const b = main.querySelector('[data-adm="setlockcode"]'); if (b) adminAction(b); }
+      if (e.key === 'Enter' && e.target.id === 'admUserPass') { e.preventDefault(); const b = main.querySelector('[data-adm="setuserpass"]'); if (b) adminAction(b); }
       if (e.key === 'Enter' && e.target.id && e.target.id.indexOf('adm_') === 0) { e.preventDefault(); saveIdentity(); }
     };
     main.oninput = e => {
@@ -2667,25 +3227,23 @@ WM.register({
    РАБОЧИЙ СТОЛ: ЗНАЧКИ
    ========================================================================== */
 const DESK = [
+  { t: 'Компьютер', i: ICO.pc, f: () => WM.open('explorer', 'C:\\') },
+  { t: 'Терминал', i: ICO.term, f: () => WM.open('terminal') },
   { t: 'Браузер', i: ICO.globe, f: () => WM.open('browser') },
   { t: 'Игры', i: ICO.game, f: () => WM.open('games') },
   { t: 'Параметры', i: ICO.settings, f: () => WM.open('settings') },
-  { t: 'Этот компьютер', i: ICO.disk, f: () => WM.open('explorer', 'C:\\') },
-  { t: 'Документы', i: ICO.folder, f: () => WM.open('explorer', 'C:\\Users\\Гость\\Документы') },
+  { t: 'Документы', i: ICO.folder, f: () => WM.open('explorer', HOME + '\\Документы') },
   { t: 'Проводник', i: ICO.folder, f: () => WM.open('explorer') },
-  { t: 'Терминал', i: ICO.term, f: () => WM.open('terminal') },
   { t: 'Блокнот', i: ICO.note, f: () => WM.open('notepad') },
-  { t: 'Магазин', i: ICO.store, f: () => WM.open('store') },
-  { t: 'Безопасность', i: ICO.shield, f: () => WM.open('security') },
   { t: 'Корзина', i: ICO.trash, f: () => Notify('Корзина', 'Корзина пуста', ICO.trash, true) },
 ];
 const PINNED = ['browser', 'games', 'explorer', 'terminal', 'settings', 'notepad', 'photos', 'music', 'calc', 'store', 'taskmgr'];
 
 /* --- Папки и файлы, созданные пользователем на рабочем столе ---
-   Хранятся в виртуальной ФС (C:\Users\Гость\Рабочий стол), поэтому видны
+   Хранятся в виртуальной ФС (папка «Рабочий стол» в домашней папке), поэтому видны
    и в Проводнике, и в терминале. Список имён держим в localStorage,
    чтобы значки не пропадали после перезагрузки. */
-const DESK_DIR = 'C:\\Users\\Гость\\Рабочий стол';
+const DESK_DIR = HOME + '\\Рабочий стол';
 const DESK_KEY = 'lumen.deskItems';
 let deskItems = [];
 
@@ -2922,18 +3480,19 @@ const Widgets = (() => {
     for (let i = 1; i <= days; i++) h += '<b class="' + (i === d.getDate() ? 'today' : '') + '">' + i + '</b>';
     $('#wCal').innerHTML = h;
   }
+  /* Полоски нагрузки обновляем только когда панель видна и вкладка активна:
+     иначе система зря считала бы и перерисовывала невидимое. */
   function stats() {
+    if (!isOpen() || document.hidden) return;
     const t = Date.now();
     const cpu = clamp(14 + Math.sin(t / 3400) * 9 + Math.random() * 6, 2, 98);
     const ram = clamp(52 + Math.sin(t / 5200) * 6 + Math.random() * 3, 10, 96);
     const gpu = clamp(24 + Math.cos(t / 2600) * 12 + Math.random() * 5, 2, 98);
     const net = clamp(8 + Math.abs(Math.sin(t / 1800)) * 46, 1, 99);
-    const set = (id, v) => { $(id).style.width = v.toFixed(0) + '%'; };
+    const set = (id, v) => { const n = $(id); if (n) n.style.width = v.toFixed(0) + '%'; };
     set('#sCpu', cpu); set('#sRam', ram); set('#sGpu', gpu); set('#sNet', net);
-    $('#vCpu').textContent = cpu.toFixed(0) + '%';
-    $('#vRam').textContent = ram.toFixed(0) + '%';
-    $('#vGpu').textContent = gpu.toFixed(0) + '%';
-    $('#vNet').textContent = net.toFixed(0) + '%';
+    const txt = (id, v) => { const n = $(id); if (n) n.textContent = v.toFixed(0) + '%'; };
+    txt('#vCpu', cpu); txt('#vRam', ram); txt('#vGpu', gpu); txt('#vNet', net);
   }
   return { toggle, close, isOpen, calendar, stats };
 })();
@@ -3066,7 +3625,7 @@ function cycleWins(dir) {
 }
 function snapActive(dir) {
   const r = activeWin(); if (!r) return;
-  const vw = window.innerWidth, vh = window.innerHeight - 52;
+  const vw = DW(), vh = DH() - 52;
   const R = {
     left: { x: 0, y: 0, w: vw / 2, h: vh },
     right: { x: vw / 2, y: 0, w: vw / 2, h: vh },
@@ -3139,26 +3698,78 @@ function lockScreen() {
   const l = $('#lock');
   l.style.display = 'flex';
   l.classList.remove('gone');
+  paintLock();
   tickClock();
 }
+
+/* Если владелец задал код запуска, экран блокировки просит его ввести. */
+function paintLock() {
+  const l = $('#lock');
+  const need = !!State.lockCode;
+  l.classList.toggle('needcode', need);
+  const hint = $('#lockHint');
+  if (hint) hint.textContent = need ? 'Ваш компьютер заблокирован. Введите код для разблокировки.' : 'Нажмите Enter, чтобы войти';
+  const btn = $('#lockBtn');
+  if (btn) btn.style.display = need ? 'none' : '';
+  const err = $('#lockErr');
+  if (err) err.textContent = '';
+  if (need) setTimeout(() => { const i = $('#lockCode'); if (i) { i.value = ''; i.focus(); } }, 120);
+}
+
 function revealDesk() {
   $('#desk').classList.add('on');
+  // Рабочий стол показан — только теперь честно меряем кадры.
+  setTimeout(tuneByFps, 600);
 }
 function unlock() {
   const l = $('#lock');
+  if (State.lockCode && State.locked) { tryLockCode(); return; }
+  State.locked = false;
   l.classList.add('gone');
   revealDesk();
   Sound.open();
   setTimeout(() => { l.style.display = 'none'; }, 700);
 }
+
+/* Проверка кода владельца на экране запуска. */
+function tryLockCode() {
+  const inp = $('#lockCode'), err = $('#lockErr');
+  if (!inp) return;
+  const val = inp.value.trim();
+  if (!val) { if (err) err.textContent = 'Введите код.'; return; }
+  if (val === State.lockCode) {
+    State.locked = false;
+    State.adminAttempts = 0;
+    if (err) err.textContent = '';
+    const l = $('#lock');
+    l.classList.add('gone');
+    revealDesk();
+    Sound.open();
+    setTimeout(() => { l.style.display = 'none'; }, 700);
+    Notify(SysInfo.get().name, 'Код принят. Система запущена.', ICO.shield, true);
+  } else {
+    State.adminAttempts = (State.adminAttempts || 0) + 1;
+    Sound.error();
+    if (err) err.textContent = 'Неверный код. Попытка ' + State.adminAttempts + '.';
+    inp.value = '';
+    inp.focus();
+    $('#lock').animate(
+      [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }],
+      { duration: 260 });
+  }
+}
 function power(mode) {
   StartMenu.closeMenu(); Quick.close();
-  if (mode === 'lock') { lockScreen(); return; }
+  if (mode === 'lock') {
+    State.locked = !!State.lockCode;
+    lockScreen();
+    return;
+  }
   const shut = $('#shut'), txt = $('#shutTxt');
   shut.classList.add('on');
   txt.textContent = mode === 'restart' ? 'Перезапуск…' : mode === 'sleep' ? 'Спящий режим…' : 'Завершение работы…';
   setTimeout(() => {
-    if (mode === 'sleep') { shut.classList.remove('on'); lockScreen(); return; }
+    if (mode === 'sleep') { shut.classList.remove('on'); State.locked = !!State.lockCode; lockScreen(); return; }
     if (mode === 'restart') { location.reload(); return; }
     shut.innerHTML = '<div style="text-align:center">' +
       '<div style="width:78px;height:78px;margin:0 auto 22px;opacity:.5"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg></div>' +
@@ -3166,6 +3777,109 @@ function power(mode) {
       '<button class="btn primary" id="wakeBtn" style="margin-top:26px;padding:12px 26px">Включить</button></div>';
     $('#wakeBtn').onclick = () => location.reload();
   }, 2400);
+}
+
+/* ============================================================================
+   ВКЛЮЧЕНИЕ КОМПЬЮТЕРА: СИСТЕМНЫЙ БЛОК И МОНИТОР
+   ========================================================================== */
+/* Сначала показываем системный блок с кнопкой питания. По нажатию загорается
+   цветная подсветка, крутятся вентиляторы, а потом картинка переходит на
+   монитор, где и появляется система. */
+function initPowerOn() {
+  const po = $('#poweron'), mon = $('#monitor');
+  if (!po || !mon) return;
+  po.classList.add('on');
+
+  let started = false, unlocked = false;
+  function start() {
+    if (started) return;
+    started = true;
+    Sound.click();
+    po.classList.add('lit');
+    setTimeout(() => Sound.boot && Sound.boot(), 260);
+    // Перед включением монитора просим пароль учётной записи.
+    setTimeout(askPassword, 1100);
+  }
+  function askPassword() {
+    if (!State.userPass) { showMonitor(); return; }
+    po.classList.add('pass');
+    setTimeout(() => { const i = $('#poPassInput'); if (i) { i.value = ''; i.focus(); } }, 220);
+  }
+  /* Пароль верный — карточка улетает в монитор, и включается экран. */
+  function passOk() {
+    if (unlocked) return;
+    unlocked = true;
+    const err = $('#poPassErr'); if (err) err.textContent = '';
+    po.classList.remove('pass');
+    po.classList.add('toscreen');
+    Sound.open();
+    setTimeout(showMonitor, 620);
+  }
+  /* Код владельца уже принят при включении компьютера — пароль не спрашиваем
+     второй раз, показываем монитор сразу. */
+  function tryPass() {
+    const inp = $('#poPassInput'), err = $('#poPassErr');
+    if (!inp) return;
+    const val = inp.value;
+    if (!val) { if (err) err.textContent = 'Введите пароль.'; return; }
+    if (val === State.userPass) { passOk(); return; }
+    Sound.error();
+    State.passTries = (State.passTries || 0) + 1;
+    if (err) err.textContent = 'Неверный пароль. Попытка ' + State.passTries + '.';
+    inp.value = '';
+    inp.focus();
+    $('#poPass').animate(
+      [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }],
+      { duration: 260 });
+  }
+  /* Код владельца: подходит вместо пароля. */
+  function tryCode() {
+    const inp = $('#poCodeInput'), err = $('#poCodeErr');
+    if (!inp) return;
+    const val = inp.value.trim();
+    if (!val) { if (err) err.textContent = 'Введите код владельца.'; return; }
+    if (val === State.lockCode) {
+      if (err) err.textContent = '';
+      passOk();
+      return;
+    }
+    Sound.error();
+    State.codeTries = (State.codeTries || 0) + 1;
+    if (err) err.textContent = 'Неверный код владельца. Попытка ' + State.codeTries + '.';
+    inp.value = '';
+    inp.focus();
+    $('#poPass').animate(
+      [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }],
+      { duration: 260 });
+  }
+  function showMonitor() {
+    mon.classList.add('on');
+    mon.classList.add('flash');
+    requestAnimationFrame(() => mon.classList.add('zoom'));
+    setTimeout(() => mon.classList.remove('flash'), 900);
+    setTimeout(() => {
+      po.style.display = 'none';
+      po.classList.remove('on');
+      window.dispatchEvent(new Event('resize'));
+      // Теперь, когда экран монитора виден, запускаем загрузку системы.
+      $('#boot').classList.add('on');
+      bootSequence();
+      setTimeout(() => Notify(SysInfo.get().name, 'Система готова. Нажмите Win или откройте «Пуск», чтобы начать.', ICO.sparkle), 2600);
+      setTimeout(() => Notify('Совет', 'Потяните окно к краю экрана — Люмен предложит зону прилипания. Win+←/→ — половина экрана.', ICO.max, true), 7200);
+    }, 900);
+  }
+
+  $('#poPower').onclick = start;
+  $('#poPc').onclick = start;
+  $('#poPassBtn').onclick = tryPass;
+  const pin = $('#poPassInput');
+  if (pin) pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryPass(); } });
+  $('#poCodeBtn').onclick = tryCode;
+  const cin = $('#poCodeInput');
+  if (cin) cin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryCode(); } });
+  document.addEventListener('keydown', e => {
+    if (po.classList.contains('on') && !started && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); start(); }
+  });
 }
 
 /* ============================================================================
@@ -3195,6 +3909,91 @@ function initDesktopCtx() {
 }
 
 /* ============================================================================
+   ОБЛЕГЧЁННЫЙ РЕЖИМ ПО ФАКТУ КАДРОВ
+   ========================================================================== */
+/* Меряем кадры сразу после запуска. Если отрисовка идёт медленно (слабое
+   железо, нет ускорения), включаем простой режим: он убирает размытие
+   подложек и тяжёлые анимации. Владелец может переключить режим вручную. */
+function measureFps() {
+  return new Promise(resolve => {
+    let n = 0;
+    const t0 = performance.now();
+    function tick() {
+      n++;
+      const dt = performance.now() - t0;
+      if (dt < 1400) requestAnimationFrame(tick);
+      else resolve(Math.round(n / (dt / 1000)));
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function applyLite(on, remember) {
+  State.lite = !!on;
+  document.documentElement.classList.toggle('lite', State.lite);
+  if (remember) {
+    try { localStorage.setItem('w12.lite', State.lite ? '1' : '0'); } catch (e) { /* хранилище недоступно */ }
+  }
+}
+
+function autoTune() {
+  let saved = null;
+  try { saved = localStorage.getItem('w12.lite'); } catch (e) { /* хранилище недоступно */ }
+  if (saved !== null) { applyLite(saved === '1', false); State.tuned = true; return; }
+
+  // Слабый компьютер виден сразу по числу ядер и объёму памяти. Ждать замера
+  // кадров не нужно: на таком железе плавности не будет ни при каком оформлении.
+  const cores = navigator.hardwareConcurrency || 8;
+  const mem = navigator.deviceMemory || 8;
+  if (cores <= 4 || mem <= 4) { applyLite(true, true); State.tuned = true; return; }
+
+  State.tuned = false;   // решится по кадрам, когда появится рабочий стол
+}
+
+/* Первый запуск: решаем по фактическим кадрам. Меряем только когда рабочий
+   стол уже виден — до этого экран загрузки слишком дёшев и врёт. */
+function tuneByFps() {
+  if (State.tuned) return;
+  State.tuned = true;
+  // Первый замер сразу после появления стола бывает завышен: браузер ещё не
+  // отрисовал тяжёлый кадр. Поэтому меряем дважды и берём худший результат.
+  setTimeout(() => {
+    measureFps().then(a => measureFps().then(b => {
+      const fps = Math.min(a, b);
+      State.fps = fps;
+      // Порог 55, а не 50: между 50 и 60 рывки уже заметны глазом.
+      if (fps && fps < 55) { enableLite(); return; }
+      applyLite(false, true);
+      watchFps();
+    }));
+  }, 1200);
+}
+
+function enableLite() {
+  if (State.lite) return;
+  applyLite(true, true);
+  Notify(SysInfo.get().name, 'Включён облегчённый режим: система работает плавнее.', ICO.sparkle);
+}
+
+/* Пассивный надзор. Пустой рабочий стол на слабом железе ещё держит 60 кадров,
+   а просадка начинается под нагрузкой — когда открыто окно или тянется ручка
+   размера. Поэтому первую половину минуты следим за кадрами и включаем
+   облегчённый режим, если стало тяжело. Окна для проверки не открываем:
+   пользователь не должен видеть ничего, кроме того, что стало плавнее. */
+function watchFps() {
+  const until = performance.now() + 30000;
+  (function again() {
+    if (State.lite || performance.now() > until) return;
+    // В скрытой вкладке кадры не рисуются — замер соврал бы про ноль.
+    if (document.hidden) { setTimeout(again, 2000); return; }
+    measureFps().then(f => {
+      if (f && f < 48) { enableLite(); return; }
+      again();
+    });
+  })();
+}
+
+/* ============================================================================
    ЗАГРУЗКА И ИНИЦИАЛИЗАЦИЯ
    ========================================================================== */
 function loadPrefs() {
@@ -3205,12 +4004,33 @@ function loadPrefs() {
     const w = localStorage.getItem('w12.wall'); if (w && WALLS.indexOf(w) >= 0) applyWall(w);
     const tr = localStorage.getItem('w12.transp'); if (tr !== null) applyTransparency(tr === '1');
     const al = localStorage.getItem('w12.align'); if (al) applyAlign(al);
+    // Код владельца. Отсутствие записи — значение по умолчанию (CODEWORD),
+    // пустая строка — владелец код снял.
+    const lc = localStorage.getItem('w12.lockcode'); if (lc !== null) State.lockCode = lc;
+    // Пароль учётной записи: храним в настройках системы, по умолчанию XXXXXX.
+    const up = localStorage.getItem('w12.userpass');
+    if (up !== null) State.userPass = up;
   } catch (e) { /* хранилище недоступно */ }
+}
+/* Пароль учётной записи. Пустая строка — вход без пароля. */
+function saveUserPass(pass) {
+  State.userPass = String(pass == null ? '' : pass);
+  try {
+    if (State.userPass) localStorage.setItem('w12.userpass', State.userPass);
+    else localStorage.removeItem('w12.userpass');
+  } catch (e) { /* хранилище недоступно */ }
+}
+/* Код запуска храним в настройках системы. Пустая строка — код снят. */
+function saveLockCode(code) {
+  State.lockCode = String(code || '').trim();
+  try { localStorage.setItem('w12.lockcode', State.lockCode); }
+  catch (e) { /* хранилище недоступно */ }
 }
 function bootSequence() {
   const TIPS = ['Инициализация ядра люмен…', 'Монтирование виртуальной ФС…', 'Запуск оконного менеджера «Плексус»…',
-    'Калибровка снапа на 12 зон…', 'Синтез звуковой подсистемы…', 'Загрузка профиля «Гость»…', 'Почти готово…'];
+    'Калибровка снапа на 12 зон…', 'Синтез звуковой подсистемы…', 'Загрузка профиля «' + USER + '»…', 'Почти готово…'];
   const bar = $('#bootBar'), tip = $('#bootTip');
+  if (!bar) return;
   let shown = 0, pct = 0;
   const iv = setInterval(() => {
     pct = Math.min(100, pct + 3 + Math.random() * 7);
@@ -3222,16 +4042,73 @@ function bootSequence() {
       setTimeout(() => {
         const b = $('#boot');
         b.classList.add('gone');
-        setTimeout(() => b.remove(), 800);
+        setTimeout(() => { b.style.display = 'none'; }, 800);
         tickClock();
         Sound.boot();
+        // Экран включения уже проверил владельца (пароль или код), поэтому
+        // второй раз ничего не спрашиваем — сразу рабочий стол.
+        State.locked = false;
+        const l = $('#lock');
+        l.style.display = 'none';
+        revealDesk();
       }, 420);
     }
   }, 190);
 }
 
+/* Поворот экрана, смена размера окна и вызов клавиатуры на телефоне меняют
+   размеры стола. Пересчитываем окна и подгоняем панель задач. */
+function initResponsive() {
+  let lastW = window.innerWidth, lastH = window.innerHeight;
+  const onResize = () => {
+    if (window.innerWidth === lastW && window.innerHeight === lastH) return;
+    lastW = window.innerWidth; lastH = window.innerHeight;
+    WM.relayout();
+    renderTaskbar();
+  };
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', () => setTimeout(onResize, 260));
+
+  // Кнопки в панели задач на телефоне должны листаться пальцем.
+  const dock = $('.tb-dock');
+  if (dock && window.matchMedia('(hover:none)').matches) dock.style.touchAction = 'pan-x';
+
+  // Двойной тап по значку открывает приложение: dblclick на телефоне не срабатывает.
+  if (window.matchMedia('(hover:none)').matches) {
+    let lastTap = 0, lastNode = null;
+    document.addEventListener('touchend', e => {
+      const ic = e.target.closest && e.target.closest('.dicon');
+      if (!ic) return;
+      const now = Date.now();
+      if (ic === lastNode && now - lastTap < 400) {
+        lastTap = 0; lastNode = null;
+        e.preventDefault();
+        if (ic.ondblclick) ic.ondblclick();
+      } else { lastTap = now; lastNode = ic; }
+    }, { passive: false });
+
+    // Правой кнопки на телефоне нет: долгое нажатие открывает то же меню.
+    let timer = null, fired = false;
+    document.addEventListener('touchstart', e => {
+      const t = e.target.closest && e.target.closest('[data-ctx], .dicon, .file, .file-row');
+      if (!t) return;
+      fired = false;
+      const x = e.touches[0].clientX, y = e.touches[0].clientY;
+      timer = setTimeout(() => {
+        fired = true;
+        t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+      }, 520);
+    }, { passive: true });
+    const stop = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    document.addEventListener('touchend', stop);
+    document.addEventListener('touchmove', stop);
+    document.addEventListener('touchcancel', stop);
+  }
+}
+
 function init() {
   loadPrefs();
+  autoTune();
   loadDeskItems();
   SysInfo.apply();
   renderIcons();
@@ -3244,6 +4121,7 @@ function init() {
   applyBrightness(State.brightness);
   initKeys();
   initDesktopCtx();
+  initResponsive();
 
   $('#startBtn').onclick = () => { Sound.click(); StartMenu.toggle(); };
   $('#searchBtn').onclick = () => { Sound.click(); if (Spot.isOpen()) Spot.close(); else Spot.open(); };
@@ -3282,19 +4160,28 @@ function init() {
   });
 
   $('#lockBtn').onclick = unlock;
-  $('#lock').onclick = e => { if (!e.target.closest('.lock-btn')) unlock(); };
+  $('#lockCodeBtn').onclick = tryLockCode;
+  $('#lockCode').onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); tryLockCode(); }
+    e.stopPropagation();
+  };
+  // При блокировке клик по фону ставит курсор в поле кода, а не пускает внутрь.
+  $('#lock').onclick = e => {
+    if (e.target.closest('.lock-btn') || e.target.closest('.lock-code')) return;
+    if (State.lockCode && State.locked) { const i = $('#lockCode'); if (i) i.focus(); return; }
+    unlock();
+  };
   document.addEventListener('keydown', e => {
     const l = $('#lock');
-    if (l && l.style.display !== 'none' && !l.classList.contains('gone') && (e.key === 'Enter' || e.key === ' ')) unlock();
+    if (!l || l.style.display === 'none' || l.classList.contains('gone')) return;
+    if (State.lockCode && State.locked) return;   // ждём код, Enter сам не пускает
+    if (e.key === 'Enter' || e.key === ' ') unlock();
   });
 
   setInterval(tickClock, 1000);
   setInterval(() => { if (Widgets.isOpen()) Widgets.stats(); }, 2200);
 
-  setTimeout(() => Notify(SysInfo.get().name, 'Система готова. Нажмите Win или откройте «Пуск», чтобы начать.', ICO.sparkle), 2600);
-  setTimeout(() => Notify('Совет', 'Потяните окно к краю экрана — Люмен предложит зону прилипания. Win+←/→ — половина экрана.', ICO.max, true), 7200);
-
-  bootSequence();
+  initPowerOn();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

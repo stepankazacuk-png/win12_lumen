@@ -35,7 +35,7 @@
 
   --shadow-w: 0 24px 70px -18px rgba(0,0,0,.85), 0 2px 0 0 rgba(255,255,255,.05) inset;
   --shadow-float: 0 18px 50px -14px rgba(0,0,0,.75);
-  --blur: saturate(180%) blur(26px);
+  --blur: saturate(170%) blur(18px);
 
   --tb-h: 52px;
   --ease: cubic-bezier(.2,.9,.25,1);
@@ -59,15 +59,23 @@ html[data-theme="light"]{
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
+html,body{height:100%;height:100dvh}
 body{
   font-family:var(--font-ui);
   background:var(--bg-0);
   color:var(--txt);
   overflow:hidden;
+  overscroll-behavior:none;
   -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
   user-select:none;
   letter-spacing:.01em;
+}
+/* На сенсорных экранах курсор не нужен, а наведение залипает после тапа. */
+@media (hover:none){
+  *{cursor:default!important}
+  .titlebar{cursor:default}
+  input,textarea{cursor:text}
 }
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input,textarea{font:inherit;color:inherit}
@@ -88,9 +96,10 @@ input,textarea{font:inherit;color:inherit}
    BOOT
    ============================================================ */
 #boot{
-  position:fixed;inset:0;z-index:9000;background:radial-gradient(120% 90% at 50% 40%,#0d1220 0%,#04050a 70%);
-  display:grid;place-items:center;transition:opacity .7s var(--ease);
+  position:absolute;inset:0;z-index:9000;background:radial-gradient(120% 90% at 50% 40%,#0d1220 0%,#04050a 70%);
+  display:none;place-items:center;transition:opacity .7s var(--ease);
 }
+#boot.on{display:grid}
 #boot.gone{opacity:0;pointer-events:none}
 .boot-inner{display:flex;flex-direction:column;align-items:center;gap:34px}
 .boot-logo{display:flex;align-items:center;gap:20px}
@@ -106,7 +115,7 @@ input,textarea{font:inherit;color:inherit}
 /* ============================================================
    LOCK
    ============================================================ */
-#lock{position:fixed;inset:0;z-index:8000;display:flex;flex-direction:column;justify-content:space-between;
+#lock{position:absolute;inset:0;z-index:8000;display:none;flex-direction:column;justify-content:space-between;
   padding:0 0 0;transition:opacity .6s var(--ease),transform .8s var(--ease);}
 #lock.gone{opacity:0;transform:translateY(-70px) scale(1.04);pointer-events:none}
 .lock-bg{position:absolute;inset:0;z-index:-1;overflow:hidden}
@@ -127,18 +136,23 @@ input,textarea{font:inherit;color:inherit}
 /* ============================================================
    DESKTOP + WALLPAPER
    ============================================================ */
-#desk{position:fixed;inset:0;z-index:10;opacity:0;transition:opacity .8s var(--ease)}
+#desk{position:absolute;inset:0;z-index:10;opacity:0;transition:opacity .8s var(--ease)}
 #desk.on{opacity:1}
-.wall{position:absolute;inset:0;overflow:hidden;background:var(--bg-0)}
-.wall .blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.75;mix-blend-mode:screen;animation:float 26s ease-in-out infinite}
-html[data-theme="light"] .wall .blob{mix-blend-mode:multiply;opacity:.42;filter:blur(80px)}
+/* isolation и contain запирают пятна внутри обойного слоя. Без них
+   mix-blend-mode:screen на пятнах заставляет браузер пересчитывать наложение
+   со всей страницей на каждом кадре — отсюда рывки на слабом железе. */
+.wall{position:absolute;inset:0;overflow:hidden;background:var(--bg-0);isolation:isolate;contain:paint}
+.wall .blob{position:absolute;border-radius:50%;filter:blur(64px);opacity:.75;mix-blend-mode:screen;
+  animation:float 26s ease-in-out infinite;will-change:transform;transform:translateZ(0)}
+html[data-theme="light"] .wall .blob{mix-blend-mode:multiply;opacity:.42;filter:blur(58px)}
 .wall .b1{width:62vw;height:62vw;left:-14vw;top:-18vw;background:radial-gradient(circle at 40% 40%,#2ee6c5,transparent 66%);animation-delay:-2s}
 .wall .b2{width:58vw;height:58vw;right:-12vw;top:-10vw;background:radial-gradient(circle at 50% 50%,#6d5cff,transparent 66%);animation-delay:-9s}
 .wall .b3{width:66vw;height:66vw;left:18vw;bottom:-30vw;background:radial-gradient(circle at 50% 50%,#ff4d8d,transparent 68%);animation-delay:-15s}
 .wall .b4{width:44vw;height:44vw;right:2vw;bottom:-16vw;background:radial-gradient(circle at 50% 50%,#5cc8ff,transparent 66%);animation-delay:-6s}
 @keyframes float{0%,100%{transform:translate3d(0,0,0) scale(1)}33%{transform:translate3d(6vw,4vh,0) scale(1.12)}66%{transform:translate3d(-5vw,-3vh,0) scale(.94)}}
 .wall .grain{position:absolute;inset:-50%;opacity:.16;pointer-events:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  background-repeat:repeat;background-size:220px 220px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 .wall .vig{position:absolute;inset:0;background:radial-gradient(130% 100% at 50% 45%,transparent 40%,rgba(0,0,0,.5) 100%)}
 html[data-theme="light"] .wall .vig{background:radial-gradient(130% 100% at 50% 45%,transparent 45%,rgba(30,40,80,.22) 100%)}
 .wall .grid{position:absolute;inset:0;opacity:.13;
@@ -495,6 +509,66 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .mus-ctrl button.play{width:62px;height:62px;background:linear-gradient(140deg,var(--accent),var(--accent-2));color:var(--accent-ink)}
 .mus-ctrl svg{width:22px;height:22px}
 .viz{width:100%;max-width:420px;height:76px;display:block;border-radius:var(--r);background:rgba(0,0,0,.28)}
+
+/* ============ МУЗЫКА: ПЛЕЕР YOUTUBE ============ */
+.mus2{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px;min-height:0}
+.mus2-stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:var(--r-lg);overflow:hidden;
+  background:#05070e;box-shadow:var(--shadow-w)}
+.mus2-frame,.mus2-frame>div,.mus2-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.mus2-off{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;text-align:center;padding:20px;color:var(--txt-dim);
+  background:rgba(5,7,14,.92);backdrop-filter:blur(6px)}
+.mus2-off b{color:var(--txt);font-family:var(--font-display);font-weight:400;font-size:16px}
+.mus2-off p{font-size:12px;max-width:46ch}
+.mus2-open{display:inline-block;margin-top:4px;padding:8px 16px;border-radius:999px;font-size:12px;font-weight:600;
+  color:var(--accent-ink);background:linear-gradient(140deg,var(--accent),var(--accent-2));text-decoration:none;
+  transition:.2s var(--ease)}
+.mus2-open:hover{transform:scale(1.05)}
+.m2-row.bad{opacity:.5}
+.m2-row.bad .m2-num{color:#f87171}
+.mus2-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mus2-meta b{font-family:var(--font-display);font-weight:400;font-size:16px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mus2-meta span{font-size:11.5px;color:var(--txt-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mus2-bar{display:flex;align-items:center;gap:10px}
+.mus2-bar .mono{font-size:11px;color:var(--txt-dim);flex:none;min-width:34px}
+.mus2-bar .mono:last-child{text-align:right}
+.m2-seek{flex:1;min-width:0}
+.mus2-ctrl{display:flex;align-items:center;gap:12px}
+.mus2-ctrl button{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;
+  background:rgba(255,255,255,.09);border:1px solid var(--stroke);color:var(--txt);
+  transition:.2s var(--ease);cursor:pointer}
+.mus2-ctrl button:hover{background:rgba(255,255,255,.18);transform:scale(1.07)}
+.mus2-ctrl button.play{width:52px;height:52px;
+  background:linear-gradient(140deg,var(--accent),var(--accent-2));color:var(--accent-ink);border-color:transparent}
+.mus2-ctrl svg{width:20px;height:20px}
+.mus2-ctrl button.play svg{width:24px;height:24px}
+.mus2-vol{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0}
+.m2-vlabel{font-size:11px;color:var(--txt-dim);flex:none}
+.m2-vol{width:96px;flex:none}
+.mus2-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px;
+  border-top:1px solid var(--stroke);padding-top:8px}
+.m2-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:var(--r);cursor:pointer;
+  transition:.15s var(--ease)}
+.m2-row:hover{background:rgba(255,255,255,.07)}
+.m2-row.on{background:rgba(92,200,255,.16)}
+.m2-row img{width:46px;height:34px;border-radius:6px;object-fit:cover;flex:none;background:rgba(0,0,0,.3)}
+.m2-rt{min-width:0;display:flex;flex-direction:column;gap:1px}
+.m2-rt b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m2-rt span{font-size:11px;color:var(--txt-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m2-num{margin-left:auto;font-size:11px;color:var(--txt-dim);flex:none}
+.m2-row.on .m2-num{color:var(--accent)}
+
+/* Телефон: список под плеером, кнопки крупнее под палец. */
+@media (max-width:560px){
+  .mus2{padding:10px;gap:10px}
+  .mus2-ctrl button{width:44px;height:44px}
+  .mus2-ctrl button.play{width:56px;height:56px}
+  .mus2-vol{margin-left:auto}
+  .m2-vol{width:70px}
+  .m2-row img{width:40px;height:30px}
+}
 #musVol{max-width:220px}
 
 /* Task manager */
@@ -534,8 +608,186 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 kbd{font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.1);border:1px solid var(--stroke-2)}
 
 /* Shutdown overlay */
-#shut{position:fixed;inset:0;z-index:9500;background:#04050a;display:none;place-items:center;flex-direction:column;gap:26px}
+#shut{position:absolute;inset:0;z-index:9500;background:#04050a;display:none;place-items:center;flex-direction:column;gap:26px}
 #shut.on{display:grid}
+
+/* ============ ОБЛЕГЧЁННЫЙ РЕЖИМ ============
+   Размытие подложек дорого стоит на слабом железе. Если кадры проседают,
+   включаем простой режим: без размытия, без шума и без плавающих пятен. */
+html.lite .wall .blob{filter:blur(28px);animation:none}
+html.lite .wall .grain{display:none}
+html.lite .wall .grid{opacity:.07}
+html.lite .win,html.lite #start,html.lite #quick,html.lite #notif,html.lite #widgets,
+html.lite #taskbar,html.lite .toast,html.lite .wcard,html.lite #ctx,html.lite .set-card{
+  backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--panel-solid)}
+html.lite #monitor.zoom{animation:none}
+
+/* Пользователь просил меньше движения в системе — гасим плывущие пятна.
+   Это отдельная настройка, а не облегчённый режим: вид остаётся полным. */
+@media (prefers-reduced-motion: reduce){
+  .wall .blob{animation:none}
+  .wall .grain{display:none}
+}
+
+/* ============ ЭКРАН ВКЛЮЧЕНИЯ: СИСТЕМНЫЙ БЛОК ============ */
+#poweron{position:fixed;inset:0;z-index:9000;display:none;background:radial-gradient(120% 100% at 50% 30%,#101728 0%,#05070e 62%,#020306 100%)}
+#poweron.on{display:block}
+.po-room{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;overflow:hidden}
+/* Подсветка комнаты: включается вместе с компьютером. */
+.po-glow{position:absolute;inset:-10%;opacity:0;pointer-events:none;transition:opacity .8s ease;
+  background:
+    radial-gradient(38% 40% at 22% 30%,rgba(92,200,255,.34),transparent 70%),
+    radial-gradient(34% 38% at 78% 26%,rgba(255,92,158,.30),transparent 72%),
+    radial-gradient(42% 46% at 50% 88%,rgba(46,230,197,.28),transparent 74%);
+  filter:blur(26px)}
+#poweron.lit .po-glow{opacity:1;animation:poDrift 16s ease-in-out infinite alternate}
+@keyframes poDrift{to{transform:translate3d(2.5%,-2%,0) scale(1.06)}}
+
+.po-pc{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+  transition:transform .5s cubic-bezier(.2,.9,.25,1)}
+#poweron.lit .po-pc{transform:translateY(-6px)}
+.po-case{position:relative;width:340px;height:400px;border-radius:22px;
+  background:linear-gradient(155deg,#232a3c 0%,#141926 46%,#0c1120 100%);
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 40px 90px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.09);
+  display:flex;overflow:hidden}
+.po-side{position:relative;flex:1;padding:16px}
+.po-vents{position:absolute;top:16px;left:16px;right:16px;display:flex;flex-direction:column;gap:5px}
+.po-vents i{height:4px;border-radius:99px;background:linear-gradient(90deg,rgba(255,255,255,.16),rgba(255,255,255,.04))}
+.po-fans{position:absolute;inset:auto 16px 84px 16px;display:flex;justify-content:space-around;align-items:center}
+.po-fan{position:relative;width:108px;height:108px;border-radius:50%;
+  background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.06),rgba(0,0,0,.35));
+  border:1px solid rgba(255,255,255,.1);display:grid;place-items:center}
+.po-blades{width:82px;height:82px;border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(180,205,240,.85) 0 12deg,transparent 12deg 45deg,
+    rgba(180,205,240,.85) 45deg 57deg,transparent 57deg 90deg,
+    rgba(180,205,240,.85) 90deg 102deg,transparent 102deg 135deg,
+    rgba(180,205,240,.85) 135deg 147deg,transparent 147deg 180deg,
+    rgba(180,205,240,.85) 180deg 192deg,transparent 192deg 225deg,
+    rgba(180,205,240,.85) 225deg 237deg,transparent 237deg 270deg,
+    rgba(180,205,240,.85) 270deg 282deg,transparent 282deg 315deg,
+    rgba(180,205,240,.85) 315deg 327deg,transparent 327deg 360deg);
+  filter:blur(.4px);opacity:.5;transition:opacity .5s ease}
+#poweron.lit .po-blades{opacity:.95}
+.po-hub{position:absolute;width:26px;height:26px;border-radius:50%;
+  background:radial-gradient(circle at 40% 35%,#5f6b86,#2b3346);border:1px solid rgba(255,255,255,.16)}
+#poweron.lit .po-blades{animation:poSpin .42s linear infinite}
+#poweron.lit #poFan2 .po-blades{animation-duration:.58s;animation-direction:reverse}
+@keyframes poSpin{to{transform:rotate(360deg)}}
+/* Цветная лента-подсветка на боку: загорается после включения. */
+.po-strip{position:absolute;left:16px;right:16px;bottom:26px;height:12px;border-radius:99px;
+  background:linear-gradient(90deg,#5cc8ff,#7b6cff,#ff5c9e,#2ee6c5,#5cc8ff);background-size:300% 100%;
+  opacity:.16;filter:blur(5px);transition:opacity .5s ease}
+#poweron.lit .po-strip{opacity:1;animation:poHue 4s linear infinite,poBreath 2.6s ease-in-out infinite}
+@keyframes poHue{to{background-position:300% 0}}
+@keyframes poBreath{50%{filter:blur(9px) brightness(1.35)}}
+
+.po-front{position:relative;width:96px;border-left:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg,#1b2130,#0d1220);display:flex;flex-direction:column;align-items:center;
+  padding:22px 0 18px;gap:14px}
+.po-btnwrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.po-power{position:relative;width:64px;height:64px;border-radius:50%;cursor:pointer;border:0;
+  display:grid;place-items:center;color:#8ea3c4;font:inherit;
+  background:radial-gradient(circle at 50% 35%,#2c3446,#141a28);
+  box-shadow:0 8px 20px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .18s ease,color .3s ease,box-shadow .3s ease}
+.po-power svg{width:26px;height:26px;position:relative;z-index:2}
+.po-power:hover{transform:translateY(-2px);color:#cfe2ff}
+.po-power:active{transform:translateY(0) scale(.97)}
+.po-ring{position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(92,200,255,.0);transition:border-color .4s ease}
+#poweron.lit .po-power{color:#0a1526;background:radial-gradient(circle at 50% 35%,#9fe6ff,#3ea9ff);
+  box-shadow:0 0 26px rgba(92,200,255,.75),inset 0 1px 0 rgba(255,255,255,.5)}
+#poweron.lit .po-ring{border-color:rgba(92,200,255,.55);animation:poPulse 1.8s ease-out infinite}
+@keyframes poPulse{0%{transform:scale(.94);opacity:.9}100%{transform:scale(1.25);opacity:0}}
+.po-btnlabel{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--txt-mute,#6f7d99)}
+.po-leds{display:flex;gap:10px}
+.po-led{width:9px;height:9px;border-radius:50%;background:#242c3d;border:1px solid rgba(255,255,255,.1);transition:.4s}
+#poweron.lit #poLedPwr{background:#4ee1a0;box-shadow:0 0 10px #4ee1a0}
+#poweron.lit #poLedDisk{background:#5cc8ff;box-shadow:0 0 10px #5cc8ff;animation:poBlink 1.4s steps(1) infinite}
+@keyframes poBlink{0%,60%{opacity:1}61%,100%{opacity:.25}}
+.po-slot{width:60px;height:9px;border-radius:3px;background:#0a0e18;border:1px solid rgba(255,255,255,.08)}
+.po-slot i{display:block;height:100%;width:40%;background:linear-gradient(90deg,transparent,rgba(92,200,255,.5),transparent);opacity:0}
+#poweron.lit .po-slot i{opacity:1;animation:poSlot 3.2s ease-in-out infinite}
+@keyframes poSlot{0%{transform:translateX(-60%)}100%{transform:translateX(160%)}}
+.po-brand{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:.5}
+.po-brand svg{width:22px;height:22px}
+.po-brand b{font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.po-stand{width:150px;height:22px;border-radius:0 0 16px 16px;background:linear-gradient(180deg,#1b2130,#0a0e18);
+  box-shadow:0 22px 44px rgba(0,0,0,.5)}
+
+.po-hint{position:relative;z-index:2;color:var(--txt-dim,#93a3c0);font-size:13.5px;transition:opacity .4s}
+#poweron.lit .po-hint{opacity:.55}
+/* Пароль учётной записи: показывается после нажатия питания, до монитора. */
+#poweron.pass .po-hint,#poweron.pass .po-pc{opacity:0;pointer-events:none}
+#poweron.pass .po-pass{opacity:1;pointer-events:auto;transform:none}
+.po-pass{position:absolute;inset:0;z-index:3;display:grid;place-items:center;
+  opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
+.po-passcard{display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:30px 34px;border-radius:20px;border:1px solid rgba(255,255,255,.1);
+  background:rgba(14,18,30,.72);box-shadow:0 30px 70px rgba(0,0,0,.55)}
+.po-passcard .avatar{width:62px;height:62px;font-size:23px}
+.po-passname{font-size:16px;font-weight:700}
+.po-passhint{font-size:12px;color:var(--txt-dim,#93a3c0);max-width:250px;text-align:center;line-height:1.5}
+.po-passfield{display:flex;gap:8px;margin-top:6px}
+.po-passfield input{padding:9px 13px;border-radius:10px;border:1px solid var(--stroke,rgba(255,255,255,.14));
+  background:rgba(255,255,255,.07);color:var(--txt,#eaf2ff);font-size:13px;outline:none;width:190px;user-select:text}
+.po-passfield input:focus{border-color:var(--accent,#6ea8ff)}
+.po-paserr{font-size:12px;color:#ff8a8a;min-height:16px;text-align:center}
+/* Вторая строка: кодовое слово владельца. */
+.po-codeword{display:flex;gap:8px;margin-top:2px;padding-top:12px;border-top:1px solid rgba(255,255,255,.09);width:100%;justify-content:center}
+.po-codeword input{padding:9px 13px;border-radius:10px;border:1px solid var(--stroke,rgba(255,255,255,.14));
+  background:rgba(255,255,255,.07);color:var(--txt,#eaf2ff);font-size:13px;outline:none;width:190px;
+  letter-spacing:.18em;text-align:center;user-select:text}
+.po-codeword input:focus{border-color:var(--accent,#6ea8ff)}
+.po-coderr{font-size:12px;color:#ff8a8a;min-height:16px;text-align:center}
+.po-passhint-alt{font-size:11.5px;opacity:.55;margin-top:-4px}
+/* Пароль принят: карточка улетает в экран, а системный блок растворяется. */
+#poweron.toscreen{opacity:0;transform:scale(1.04);transition:opacity .55s ease,transform .55s ease}
+#poweron.toscreen .po-passcard{transform:scale(1.7);opacity:0;
+  transition:transform .5s var(--ease),opacity .5s var(--ease)}
+
+/* ============ МОНИТОР ============ */
+#monitor{position:fixed;inset:0;z-index:9100;display:none;align-items:center;justify-content:center;
+  flex-direction:column;background:radial-gradient(120% 100% at 50% 34%,#0d1424 0%,#04060d 64%,#020306 100%)}
+#monitor.on{display:flex}
+#monitor.zoom{animation:monIn .9s cubic-bezier(.2,.9,.25,1) both}
+/* Включение экрана: короткая вспышка и лёгкая пересветка, как у настоящего монитора. */
+@keyframes monIn{
+  0%{transform:scale(.94);opacity:.1;filter:brightness(.35)}
+  38%{transform:scale(1.008);opacity:1;filter:brightness(1.4)}
+  100%{transform:scale(1);opacity:1;filter:brightness(1)}
+}
+.mon-screen{position:relative;width:100%;height:100%;flex:1 1 auto;min-height:0;border-radius:0;overflow:hidden;
+  background:#04060c;border:0;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+/* Экран занимает весь компьютер — рамка, подставка и «подбородок» убраны. */
+/* Вспышка при включении монитора. */
+.mon-flash{position:absolute;inset:0;z-index:6;background:#e8f4ff;opacity:0;pointer-events:none}
+#monitor.flash .mon-flash{animation:monFlash .6s ease-out both}
+@keyframes monFlash{0%{opacity:.9}45%{opacity:.22}100%{opacity:0}}
+.mon-inner{position:absolute;inset:0;z-index:1;display:none}
+#monitor.on .mon-inner{display:block}
+.mon-glare{position:absolute;inset:0;pointer-events:none;z-index:3;
+  background:linear-gradient(120deg,rgba(255,255,255,.075) 0%,transparent 42%,transparent 100%)}
+/* Пока системы нет, экран монитора тёмный. */
+.mon-off{position:absolute;inset:0;z-index:4;background:#04060c;display:grid;place-items:center;transition:opacity .5s}
+#monitor.on .mon-off{opacity:0;pointer-events:none}
+.mon-offword{font-family:var(--font-display);font-weight:300;font-size:15px;letter-spacing:.3em;
+  text-transform:uppercase;color:#1d2434}
+
+/* Экран блокировки по коду владельца */
+#lock.needcode .lock-hint{color:#ffc65c}
+/* Заголовок «Ваш компьютер заблокирован» виден только при блокировке. */
+.lock-title{display:none;font-family:var(--font-display);font-weight:600;font-size:19px;letter-spacing:.01em;margin-bottom:3px}
+#lock.needcode .lock-title{display:block}
+#lock.needcode .lock-user{font-size:14px;font-weight:600;color:rgba(255,255,255,.72)}
+.lock-code{display:none;margin-top:14px;gap:8px;align-items:center}
+#lock.needcode .lock-code{display:flex}
+.lock-code input{width:170px;padding:10px 14px;border-radius:11px;border:1px solid var(--stroke-2,rgba(255,255,255,.16));
+  background:rgba(255,255,255,.08);color:var(--txt,#eaf2ff);font:inherit;font-size:15px;letter-spacing:.22em;
+  text-align:center;outline:none}
+.lock-code input:focus{border-color:var(--accent,#5cc8ff);box-shadow:0 0 0 4px rgba(92,200,255,.16)}
+.lock-err{font-size:12px;color:#ff8a9b;font-weight:600;min-height:16px;margin-top:8px;text-align:center}
 .spinner{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.16);border-top-color:var(--accent);animation:spin .9s linear infinite}
 
 /* volume/brightness overlays */
@@ -548,10 +800,137 @@ kbd{font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:5p
 .hud-bar i{display:block;height:100%;background:var(--accent);transition:width .15s}
 #bright{position:absolute;inset:0;z-index:400;background:#000;opacity:0;pointer-events:none;transition:opacity .3s}
 
+/* ============================================================
+   АДАПТАЦИЯ: планшет, телефон, узкий экран
+   ============================================================ */
+
+/* Планшет и небольшой ноутбук */
+@media (max-width:900px){
+  :root{--tb-h:48px}
+  #widgets{width:min(340px,88vw)}
+  #quick,#notif{width:min(352px,calc(100vw - 24px))}
+  #start{width:min(680px,calc(100vw - 20px))}
+}
+
 @media (max-width:760px){
   #widgets{width:100%}
   .app-side{display:none}
   .lock-clock{font-size:72px}
+}
+
+/* Телефон */
+@media (max-width:560px){
+  :root{--tb-h:56px;--r-xl:20px}
+
+  /* Панель задач: иконки крупнее, часы прячем, остаётся время. */
+  #taskbar{padding:0 6px;gap:4px}
+  .tb-dock{gap:2px;padding:5px 6px;overflow-x:auto;scrollbar-width:none}
+  .tb-dock::-webkit-scrollbar{display:none}
+  .tb-btn{width:44px;height:44px;flex:none}
+  .tb-btn:hover{background:none;transform:none}
+  .tb-btn svg{width:26px;height:26px}
+  .tray{padding:5px 8px;gap:2px}
+  .tray-time small{display:none}
+  .tray-time{font-size:11px}
+  #showDesk{display:none}
+
+  /* Значки рабочего стола: мельче, но крупнее зона нажатия. */
+  #icons{inset:10px 8px calc(var(--tb-h) + 12px) 8px;grid-template-columns:repeat(auto-fill,76px);grid-auto-rows:88px;gap:2px}
+  .dicon{width:74px;padding:8px 2px 6px;gap:6px}
+  .dicon .ico{width:38px;height:38px}
+  .dicon span{font-size:10.5px}
+  .dicon:hover{background:none;border-color:transparent}
+
+  /* Окна: почти во весь экран, без перетаскивания. */
+  .win{min-width:0;min-height:0;border-radius:16px}
+  .titlebar{height:46px;padding:0 4px 0 12px;cursor:default}
+  .tb-title{font-size:13px}
+  .win-ctl button{width:42px;height:38px}
+  .win-ctl button:hover{background:none}
+  .win-ctl button.close:hover{background:none;color:inherit}
+  .rz{display:none}
+
+  /* Меню Пуск: во весь экран снизу. */
+  #start{width:calc(100vw - 12px);max-height:calc(100dvh - var(--tb-h) - 16px);padding:16px;border-radius:20px}
+  .start-grid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}
+  .app-tile{padding:12px 4px 10px}
+  .app-tile svg{width:30px;height:30px}
+  .app-tile:hover{background:none;border-color:transparent;transform:none}
+
+  /* Панели во всю ширину. */
+  #quick,#notif{right:6px;left:6px;width:auto;padding:14px}
+  #widgets{padding:12px}
+
+  /* Контекстное меню: шире, пункты выше. */
+  #ctx{min-width:min(260px,calc(100vw - 16px));padding:8px}
+  .ctx-i{padding:12px 12px}
+
+  /* Экран включения и блокировки. */
+  .po-passcard{padding:22px 18px;width:calc(100vw - 32px);max-width:380px}
+  .po-passfield{width:100%}
+  .po-passfield input{width:100%}
+  .po-codeword{width:100%}
+  .po-codeword input{width:100%}
+  .lock-clock{font-size:58px}
+  .lock-bottom{flex-direction:column;gap:14px;padding:0 16px 40px;text-align:center}
+  /* Внутренний блок должен тянуться на всю ширину, иначе поле кода
+     считается от ширины текста и вылезает за экран. */
+  .lock-bottom > div{width:100%;max-width:100%}
+  .lock-code{width:100%;max-width:100%;box-sizing:border-box}
+  #lock.needcode .lock-code{width:100%;max-width:100%}
+  .lock-code input{flex:1;min-width:0;width:auto}
+  .lock-title{font-size:16px}
+
+  /* Приложения: колонки в одну, полосы прокрутки не мешают. */
+  .app-bar{padding:8px 10px;gap:6px}
+  .br-marks{padding:6px 10px}
+  .br-foot{padding:6px 10px}
+  .g-pad-btn{min-width:56px;padding:14px 16px}
+  .g-mines{width:100%}
+}
+
+/* Очень узкий телефон */
+@media (max-width:400px){
+  .lock-clock{font-size:46px}
+  .dicon .ico{width:34px;height:34px}
+  #icons{grid-template-columns:repeat(auto-fill,68px)}
+  .dicon{width:66px}
+  .po-passname{font-size:15px}
+}
+
+/* Планшет в горизонтали: значки и окна в несколько колонок */
+@media (min-width:561px) and (max-width:900px){
+  .win{min-width:0}
+  .rz{display:none}
+}
+
+/* Низкий экран: телефон в горизонтали, окно браузера небольшой высоты.
+   Карточка пароля и экран блокировки должны влезать целиком. */
+@media (max-height:560px){
+  .po-passcard{padding:16px 20px;gap:7px}
+  .po-passcard .avatar{width:44px;height:44px;font-size:17px}
+  .po-passname{font-size:14px}
+  .po-passhint{font-size:11px;max-width:300px}
+  .po-passfield{margin-top:2px}
+  .po-passfield input,.po-codeword input{padding:7px 11px;font-size:12.5px}
+  .po-codeword{padding-top:8px}
+  .po-hint{font-size:12px}
+  .lock-top{padding:16px 0 0}
+  .lock-bottom{padding:0 16px 18px;gap:10px}
+  .lock-clock{font-size:40px}
+  .lock-date{font-size:14px}
+  .lock-code input{padding:8px 12px}
+  .lock-btn{padding:9px 16px;font-size:13px}
+}
+
+/* Сенсорные экраны: убираем залипание наведения */
+@media (hover:none){
+  .dicon:hover,.app-tile:hover,.tb-btn:hover,.br-mark:hover,.g-pad-btn:hover,
+  .g-tile:hover:not(.empty),.g-cell:hover:not(.open),.btn:hover,.ctx-i:hover{background:initial;transform:none}
+  .dicon:hover,.app-tile:hover{border-color:transparent}
+  .tb-btn:hover{transform:none}
+  .win-ctl button:hover{background:initial}
+  .win-ctl button.close:hover{background:#e5484d;color:#fff}
 }
 
 /* Браузер */
@@ -566,8 +945,8 @@ kbd{font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:5p
   background:rgba(255,255,255,.07);border:1px solid var(--stroke);color:var(--txt-dim);transition:.16s}
 .br-mark:hover{background:rgba(255,255,255,.15);color:var(--txt)}
 .br-mark.on{border-color:var(--accent);color:var(--txt)}
-.br-stage{position:relative;flex:1;min-height:0;background:#fff}
-.br-frame{width:100%;height:100%;border:0;display:block;background:#fff}
+.br-stage{position:relative;flex:1;min-height:0;background:#0b1220;display:flex}
+.br-canvas{flex:1;width:100%;height:100%;display:block;outline:none;cursor:default;background:#fff}
 .br-state{position:absolute;inset:0;display:none;place-items:center;gap:10px;flex-direction:column;text-align:center;
   padding:26px;background:rgba(8,12,24,.94);color:var(--txt);font-size:12.5px;z-index:2}
 .br-state.on{display:flex;align-items:center;justify-content:center}
@@ -582,6 +961,7 @@ kbd{font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:5p
 .br-foot .spacer{flex:1}
 .br-chip{padding:2px 9px;border-radius:99px;background:rgba(78,225,160,.16);color:#7ff0c0;
   border:1px solid rgba(78,225,160,.3);font-weight:600}
+.br-chip.warn{background:rgba(255,198,92,.16);color:#ffd983;border-color:rgba(255,198,92,.32)}
 
 /* Игры */
 .g-wrap{height:100%}
