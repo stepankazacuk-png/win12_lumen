@@ -98,7 +98,7 @@ for r in (d if isinstance(d,list) else []):
   NEW_ID="$(curl -s -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${REPO}/releases" \
-    -d '{"tag_name":"v1.0","name":"Люмен 1.0","body":"Готовая сборка: распакуйте архив и запустите Запустить-Windows.bat (Windows) или Запустить-Linux-macOS.command (macOS/Linux). Кодов по умолчанию нет — код владельца задаётся при первом запуске.","draft":false,"prerelease":false}' \
+    -d '{"tag_name":"v1.0","name":"Люмен 1.0","body":"Готовая сборка: распакуйте архив и запустите Запустить-Windows.bat (Windows) или Запустить-Linux-macOS.command (macOS/Linux). Вход — по паролю учётной записи, запасной вход — код владельца за ссылкой «Забыли пароль?».","draft":false,"prerelease":false}' \
     | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null)"
   if [ -n "$NEW_ID" ] && [ -f lumen.zip ]; then
     curl -s -o /dev/null -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
