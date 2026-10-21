@@ -48,8 +48,8 @@
 
     <div class="po-hint" id="poHint">Нажмите кнопку питания, чтобы включить компьютер</div>
 
-    <!-- Экран входа: пароль учётной записи, а за «Забыли пароль?» — код
-         владельца. Содержимое рисует os.js. -->
+    <!-- Экран входа: имя и пароль учётной записи. «Забыли пароль?» ведёт к
+         сбросу по коду владельца. Содержимое рисует os.js. -->
     <div class="po-pass" id="poPass">
       <div class="po-passcard" id="poPassCard"></div>
     </div>
@@ -86,7 +86,7 @@
           <div class="avatar" id="lockAvatar" data-sys="user-initial">С</div>
           <div id="lockBody">
             <div class="lock-title" id="lockTitle">Ваш компьютер заблокирован</div>
-            <div class="lock-user" data-sys="user">Степан</div>
+            <div class="lock-user" id="lockUser">Степан</div>
             <div class="lock-hint" id="lockHint">Нажмите Enter, чтобы войти</div>
             <div class="lock-code">
               <input id="lockCode" type="password" autocomplete="off" maxlength="64" placeholder="пароль">

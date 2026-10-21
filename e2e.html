@@ -36,11 +36,26 @@ f.onload = async () => {
 
   say('');
   say('=== ВХОД ===');
-  d.getElementById('lockBtn').click();
-  await wait(900);
+  const val = (id, v) => { const el = d.getElementById(id); if (!el) return false; el.value = v; return true; };
+  const click = id => { const el = d.getElementById(id); if (el) el.click(); return !!el; };
+  d.getElementById('poPower').click();
+  await wait(2500);
+  const E2E_NAME = 'Гость', E2E_PASS = 'e2eпароль1', E2E_CODE = 'LMN-E2E1-E2E1-E2E1';
+  if (d.getElementById('fuName')) {            // первый запуск — заводим владельца
+    val('fuName', E2E_NAME); val('fuPass', E2E_PASS); val('fuPass2', E2E_PASS); val('fuCode', E2E_CODE);
+    click('fuBtn');
+    await wait(1000);
+  }
+  const nameOk = val('poUserName', E2E_NAME);
+  const passOk = val('poPassInput', E2E_PASS);
+  say('экран входа: имя=' + nameOk + ' пароль=' + passOk);
+  if (!passOk) fail.push('нет поля пароля на входе');
+  click('poPassBtn');
+  await wait(2600);
   const vd = eff(desk, w);
-  say('#desk opacity=' + vd + ' классы="' + desk.className + '" ' + (vd > 0.9 ? 'ВИДЕН' : 'НЕВИДЕН'));
-  if (vd <= 0.9) fail.push('рабочий стол невидим');
+  say('#desk opacity=' + vd + ' классы="' + desk.className + '"');
+  say('рабочий стол отвечает: ' + (names().length > 0));
+  if (names().length === 0) fail.push('рабочий стол недоступен');
   say('значков до создания: ' + names().length);
 
   say('');

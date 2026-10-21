@@ -748,6 +748,13 @@ html.lite #monitor.zoom{animation:none}
 .po-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:4px}
 .po-sep{width:100%;height:1px;background:rgba(255,255,255,.09);margin:6px 0 2px}
 .po-warn{font-size:11.5px;color:#ffc65c;max-width:280px;text-align:center;line-height:1.5}
+/* Выбор учётной записи при сбросе пароля. */
+.po-userlist{display:flex;flex-direction:column;gap:6px;margin-top:6px;width:100%;max-width:300px}
+.po-userrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  padding:9px 13px;border-radius:10px;border:1px solid var(--stroke,rgba(255,255,255,.14));
+  background:rgba(255,255,255,.07);color:var(--txt,#eaf2ff);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.po-userrow:hover{border-color:var(--accent,#6ea8ff);background:rgba(255,255,255,.11)}
+.po-userrow small{font-size:10.5px;color:var(--txt-dim,#93a3c0)}
 .po-passcard input{user-select:text}
 .po-reccode{font-family:var(--font-mono,ui-monospace,monospace);font-size:15px;letter-spacing:.14em;
   background:rgba(255,255,255,.08);border:1px dashed rgba(255,255,255,.24);border-radius:10px;

@@ -153,40 +153,235 @@ const Auth = (() => {
     for (let i = 0; i < h.length; i++) diff |= h.charCodeAt(i) ^ rec.hash.charCodeAt(i);
     return diff === 0;
   }
-  return { make: make, check: check, ITER: ITER };
+
+  /* --- Шифрование записей пользователей -------------------------------
+     Пароль нигде не хранится: из него выводится ключ, и этим ключом
+     зашифрована запись. Верный пароль = запись расшифровалась. Схема —
+     потоковый шифр на SHA-256 плюс метка целостности: подмена роли или
+     содержимого не пройдёт проверку. Всё синхронно, без внешних библиотек. */
+  const hexToBytes = h => { const a = new Uint8Array(h.length / 2); for (let i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; };
+  const bytesToHex = b => [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  const block = (key, i) => hexToBytes(digest(key + ':ks:' + i));
+
+  const xorHex = (bytes, key) => {
+    const out = new Uint8Array(bytes.length);
+    let ks = null;
+    for (let i = 0; i < bytes.length; i++) {
+      if (i % 32 === 0) ks = block(key, i / 32);
+      out[i] = bytes[i] ^ ks[i % 32];
+    }
+    return out;
+  };
+  function encrypt(text, key) {
+    return bytesToHex(xorHex(new TextEncoder().encode(text), key));
+  }
+  /* Обратный ход: из hex-шифртекста достаём исходный текст. */
+  function decrypt(hexCt, key) {
+    return new TextDecoder().decode(xorHex(hexToBytes(hexCt), key));
+  }
+  function tagOf(ct, key) { return digest(key + ':mac:' + ct); }
+  /* Шифрует запись и возвращает готовый набор для хранилища. */
+  function seal(payload, password) {
+    const salt = toHex(rnd(16));
+    const key = stretch(password, salt, ITER);
+    const ct = encrypt(JSON.stringify(payload), key);
+    return { salt: salt, iter: ITER, ct: ct, tag: tagOf(ct, key) };
+  }
+  /* Открывает запись паролем. Не подошёл — null. */
+  function open(rec, password) {
+    if (!rec || !rec.ct || !rec.tag || !rec.salt) return null;
+    const key = stretch(String(password == null ? '' : password), rec.salt, rec.iter || ITER);
+    const t = tagOf(rec.ct, key);
+    if (t.length !== rec.tag.length) return null;
+    let diff = 0;
+    for (let i = 0; i < t.length; i++) diff |= t.charCodeAt(i) ^ rec.tag.charCodeAt(i);
+    if (diff !== 0) return null;
+    try { return JSON.parse(decrypt(rec.ct, key)); }
+    catch (e) { return null; }
+  }
+  return { make: make, check: check, seal: seal, open: open, ITER: ITER };
 })();
 
 /* ------------------------------ STATE ------------------------------------- */
-/* Отпечатки доступа по умолчанию. Открытого текста здесь нет: это SHA-256 с
-   солью и повторами, из него код и пароль не восстановить. Так система
-   работает сразу после установки, но подсмотреть значения в исходниках
-   нельзя. Пароль — основной вход, код владельца — для восстановления и
-   панели администратора. */
-const DEFAULT_AUTH = {
-  ver: 1, ready: true,
-  pass: { salt: '8eeccc10e72032632514e89ea7f7e9e5', iter: 12000,
-          hash: 'b6c2ad7de6b4c0f23dbec6b1cc0a60cfe8d538c3dc4a818f7136949b8840f101' },
-  code: { salt: '7e4244bd52e309f9a5ec5e31e60a204e', iter: 12000,
-          hash: '2a9fb45f4ba35145d7b5e2d37c5542cf89ca06ebe744624232203e39e3580b3c' },
-};
+/* Данные доступа. Открытого текста здесь нет: только отпечаток кода владельца
+   (SHA-256 с солью и повторами), из него код не восстановить. Кода по
+   умолчанию тоже нет: владелец задаёт его сам при первом запуске. Код
+   владельца — главный ключ: он открывает панель администратора и позволяет
+   задать новый пароль учётной записи. Пароли учётных записей хранит модуль
+   Users — тоже без открытого текста. */
+const DEFAULT_AUTH = { ver: 2, ready: false, code: null };
 const State = {
   accent: '#5cc8ff', accent2: '#7b6cff', theme: 'dark', wallpaper: 'aurora',
   align: 'center', transparency: true, volume: 62, brightness: 100,
   night: false, focus: false, tiling: false, zTop: 100, open: {}, seq: 0,
   admin: false, adminAttempts: 0, adminLog: [],
-  /* Доступ: только отпечатки. */
+  /* Доступ: только отпечаток кода владельца. */
   auth: Object.assign({}, DEFAULT_AUTH),
   locked: true,       // система заблокирована до ввода пароля
   passTries: 0,       // счётчик неверных попыток пароля
+  user: null,         // кто вошёл: { name, role }
   lite: false,        // облегчённый режим оформления (включается сам при просадке кадров)
   tuned: false,       // решение о режиме уже принято
 };
 
-/* Что система спрашивает при входе. Пароль — основной вход, код владельца
-   подходит вместо пароля. Кодов в коде нет — только отпечатки. */
+/* ============================================================================
+   УЧЁТНЫЕ ЗАПИСИ
+   Пароль не хранится вообще — ни открытым текстом, ни отпечатком. Из пароля
+   выводится ключ, которым зашифрована запись: верный пароль расшифровывает
+   её, неверный не проходит по метке целостности. Поэтому копия хранилища не
+   даёт ни пароля, ни возможности подменить роль.
+
+   Имя и роль записи лежат открыто. Это не секрет: имя и так показано на
+   экране входа, а без него запись не найти по введённому имени. Роль
+   продублирована в шифрованной части, и при входе они сверяются — подменить
+   роль в хранилище не выйдет, метка не сойдётся.
+   ========================================================================== */
+const Users = (() => {
+  const KEY = 'w12.users';
+  /* Записей по умолчанию нет: владелец заводит первую учётную запись сам при
+     первом запуске. Пароля по умолчанию в системе не существует. */
+  const DEFAULTS = [];
+  const ROLES = ['admin', 'user'];
+  let list = [];
+
+  const clean = n => String(n == null ? '' : n).trim().replace(/\s+/g, ' ');
+  const fold = n => clean(n).toLowerCase();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const a = JSON.parse(raw);
+        if (Array.isArray(a)) {
+          list = a.filter(r => r && clean(r.name) && r.ct && r.tag && r.salt);
+          return;
+        }
+      }
+    } catch (e) { /* хранилище недоступно — записей нет */ }
+    list = [];
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) { /* недоступно */ }
+  }
+  /* Имя не должно ломать пути: оно становится папкой C:\Users\<имя>. */
+  function nameError(name) {
+    const n = clean(name);
+    if (n.length < 2) return 'Имя короче двух знаков.';
+    if (n.length > 24) return 'Имя длиннее 24 знаков.';
+    if (/[\\/:*?"<>|]/.test(n)) return 'В имени нельзя использовать \\ / : * ? " < > |';
+    return '';
+  }
+  function passError(pass) {
+    if (String(pass == null ? '' : pass).length < 4) return 'Пароль короче четырёх знаков.';
+    return '';
+  }
+
+  function all() { return list.map(r => ({ name: r.name, role: r.role })); }
+  const count = () => list.length;
+  const has = name => list.some(r => fold(r.name) === fold(name));
+  const get = name => list.find(r => fold(r.name) === fold(name)) || null;
+  const admins = () => list.filter(r => r.role === 'admin');
+
+  /* Проверка входа. Верный пароль возвращает запись, иначе null.
+     Роль и имя берём из шифрованной части и сверяем с открытыми: так
+     подмена роли в хранилище не пройдёт. */
+  function verify(name, password) {
+    const rec = get(name);
+    if (!rec) return null;
+    const p = Auth.open(rec, password);
+    if (!p) return null;
+    if (fold(p.name) !== fold(rec.name)) return null;
+    if (p.role !== rec.role) return null;
+    if (ROLES.indexOf(rec.role) < 0) return null;
+    return { name: rec.name, role: rec.role };
+  }
+
+  /* Заводит запись: пароль шифрует её и нигде не сохраняется. */
+  function add(name, password, role) {
+    const n = clean(name);
+    const e = nameError(n) || passError(password);
+    if (e) return { ok: false, err: e };
+    if (has(n)) return { ok: false, err: 'Такое имя уже занято.' };
+    const r = ROLES.indexOf(role) >= 0 ? role : 'user';
+    const sealed = Auth.seal({ name: n, role: r }, String(password));
+    list.push(Object.assign({ name: n, role: r }, sealed));
+    save();
+    return { ok: true, name: n };
+  }
+
+  /* Новый пароль: запись заново шифруется, прежний пароль перестаёт работать.
+     Смена роли идёт тем же путём — тоже через новый пароль, потому что роль
+     лежит внутри шифрованной части и перешить её без пароля нельзя. */
+  function setPassword(name, password, role) {
+    const rec = get(name);
+    if (!rec) return { ok: false, err: 'Учётная запись не найдена.' };
+    const e = passError(password);
+    if (e) return { ok: false, err: e };
+    const r = ROLES.indexOf(role) >= 0 ? role : rec.role;
+    /* Последний администратор должен остаться: иначе панель станет недоступна. */
+    if (rec.role === 'admin' && r !== 'admin' && admins().length <= 1) {
+      return { ok: false, err: 'Это единственный администратор — роль не понизить.' };
+    }
+    const sealed = Auth.seal({ name: rec.name, role: r }, String(password));
+    Object.assign(rec, sealed, { role: r });
+    save();
+    return { ok: true, name: rec.name };
+  }
+
+  /* Смена только роли: перешиваем запись последним известным паролем нельзя,
+     поэтому просим задать пароль заново. */
+  function setRole(name, role, password) {
+    const rec = get(name);
+    if (!rec) return { ok: false, err: 'Учётная запись не найдена.' };
+    if (ROLES.indexOf(role) < 0) return { ok: false, err: 'Неизвестная роль.' };
+    if (rec.role === role) return { ok: true, name: rec.name };
+    if (!password) return { ok: false, err: 'Задайте новый пароль — он перешьёт запись с новой ролью.' };
+    return setPassword(name, password, role);
+  }
+
+  function remove(name) {
+    const rec = get(name);
+    if (!rec) return { ok: false, err: 'Учётная запись не найдена.' };
+    if (rec.role === 'admin' && admins().length <= 1) return { ok: false, err: 'Нельзя удалить единственного администратора.' };
+    list = list.filter(r => r !== rec);
+    save();
+    return { ok: true, name: rec.name };
+  }
+
+  load();
+  return { all, count, has, get, admins, verify, add, setPassword, setRole, remove,
+           nameError, passError, ROLES, KEY };
+})();
+
+/* Вход нужен всегда: без учётной записи в систему не попасть. Код владельца —
+   запасной вход, он же открывает панель администратора. */
 const hasCode = () => !!(State.auth && State.auth.code);
-const hasPass = () => !!(State.auth && State.auth.pass);
-const needGate = () => hasPass() || hasCode();
+const hasUsers = () => Users.count() > 0;
+/* Первый запуск: учётных записей ещё нет — владелец создаёт первую сам. */
+const isFirstRun = () => !hasUsers();
+const needGate = () => true;
+
+/* Кто вошёл сейчас. Имя задаёт домашнюю папку, поэтому меняем его здесь —
+   и больше нигде, иначе пути разъедутся. */
+function setCurrentUser(name) {
+  const rec = Users.get(name);
+  State.user = rec ? { name: rec.name, role: rec.role } : { name: USER, role: 'admin' };
+  USER = State.user.name;
+  HOME = 'C:\\Users\\' + USER;
+  try { localStorage.setItem('w12.lastuser', USER); } catch (e) { /* недоступно */ }
+  return State.user;
+}
+const currentUser = () => State.user || { name: USER, role: 'admin' };
+const isAdmin = () => currentUser().role === 'admin';
+/* После входа всё, что зависит от имени, должно пересчитаться: домашняя
+   папка, рабочий стол, значки. */
+function applyCurrentUser() {
+  setCurrentUser(currentUser().name);
+  setDeskScope();
+  renderIcons();
+  renderTaskbar();
+  SysInfo.apply();
+}
 
 
 /* ------------------------------ UTILS ------------------------------------- */
@@ -225,10 +420,11 @@ const Sound = (() => {
   };
 })();
 
-/* Имя владельца компьютера и его домашняя папка. Меняются здесь — и больше
-   нигде, иначе имя разъедется по путям, терминалу и сведениям о системе. */
-const USER = 'Степан';
-const HOME = 'C:\\Users\\' + USER;
+/* Имя владельца компьютера и его домашняя папка. Меняются при входе — и
+   больше нигде, иначе имя разъедется по путям, терминалу и сведениям о
+   системе. Вход под другим пользователем подставляет сюда его имя. */
+let USER = 'Степан';
+let HOME = 'C:\\Users\\' + USER;
 
 /* ============================================================================
    ВИРТУАЛЬНАЯ ФАЙЛОВАЯ СИСТЕМА
@@ -1244,13 +1440,16 @@ const SysInfo = (() => {
 
   function apply() {
     const set = (k, v) => $$('[data-sys="' + k + '"]').forEach(n => { n.textContent = v; });
+    /* Имя пользователя берём у того, кто вошёл, а не из настроек: оно задаёт
+       домашнюю папку. В настройках оно остаётся запасным значением. */
+    const who = (State.user && State.user.name) || cur.user;
     set('name', cur.name);
     set('namever', cur.name + ' ' + cur.version);
     set('version', cur.version);
     set('kernel', cur.kernel);
     set('build', cur.build);
-    set('user', cur.user);
-    set('user-initial', (cur.user[0] || 'Г').toUpperCase());
+    set('user', who);
+    set('user-initial', (who[0] || 'Г').toUpperCase());
     document.title = cur.name + ' — веб-ОС';
   }
 
@@ -2948,6 +3147,9 @@ WM.register({
     }
 
     let admTab = 'overview';
+    /* Сообщение об ошибке на вкладке «Пользователи»: показывается после
+       неудачного действия и сбрасывается при успешном. */
+    let admUserErr = '';
 
     const log_ = m => (State.adminLog = State.adminLog || []).push('[' + new Date().toLocaleTimeString('ru-RU') + '] ' + m);
 
@@ -2981,6 +3183,7 @@ WM.register({
 
     const ADM_TABS = [
       { id: 'overview', t: 'Обзор' },
+      { id: 'users', t: 'Пользователи' },
       { id: 'identity', t: 'Имя системы' },
       { id: 'windows', t: 'Окна' },
       { id: 'look', t: 'Оформление' },
@@ -3022,6 +3225,51 @@ WM.register({
               '<button class="chip" data-adm="dump">' + ICO.note + ' Выгрузить отчёт</button>' +
               '<button class="chip" data-adm="lock">' + ICO.shield + ' Блокировать</button>' +
             '</div></div></div>';
+      },
+      users() {
+        const rows = Users.all().map(u => {
+          const me = u.name === currentUser().name;
+          return '<div class="set-row" style="border-bottom:1px solid var(--stroke);align-items:center">' +
+            '<span style="display:flex;align-items:center;gap:10px">' +
+              '<span class="avatar" style="width:30px;height:30px;font-size:13px">' + esc((u.name[0] || 'Г').toUpperCase()) + '</span>' +
+              '<span><b>' + esc(u.name) + '</b>' +
+              '<div style="font-size:10.5px;color:var(--txt-dim)">' +
+                (u.role === 'admin' ? 'администратор' : 'пользователь') + (me ? ' · это вы' : '') + '</div></span>' +
+            '</span>' +
+            '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
+              '<input class="fld" data-passfor="' + esc(u.name) + '" type="password" autocomplete="off" ' +
+                'placeholder="новый пароль" style="width:150px;padding:6px 9px;font-size:12px">' +
+              '<button class="btn primary" data-adm="saveuserpass" data-name="' + esc(u.name) + '">Сменить пароль</button>' +
+              '<select class="fld" data-rolefor="' + esc(u.name) + '" style="width:auto;padding:6px 9px;font-size:12px">' +
+                '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') + '>администратор</option>' +
+                '<option value="user"' + (u.role === 'user' ? ' selected' : '') + '>пользователь</option>' +
+              '</select>' +
+              '<button class="btn" data-adm="saveuserrole" data-name="' + esc(u.name) + '">Роль</button>' +
+              '<button class="btn" data-adm="deluser" data-name="' + esc(u.name) + '"' + (me ? ' disabled' : '') + '>Удалить</button>' +
+            '</span></div>';
+        }).join('');
+        const errBox = admUserErr
+          ? '<div style="margin-top:12px;font-size:12.5px;font-weight:600;color:#ff8a9b">' + esc(admUserErr) + '</div>' : '';
+        return '<div class="set-grid adm">' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Учётные записи · ' + Users.count() + '</h5>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Пароли не хранятся: из пароля выводится ключ, которым зашифрована запись. Забытый пароль не подсмотреть — можно только задать новый. Смена роли идёт вместе с новым паролем, потому что роль лежит внутри шифрованной части записи.</p>' +
+            rows + errBox +
+          '</div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Добавить пользователя</h5>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+              '<label style="display:block"><span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Имя</span>' +
+                '<input class="fld" id="admNewUser" type="text" autocomplete="off" maxlength="24" placeholder="имя пользователя" style="width:190px"></label>' +
+              '<label style="display:block"><span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Пароль</span>' +
+                '<input class="fld" id="admNewPass" type="password" autocomplete="off" maxlength="64" placeholder="не короче 4 знаков" style="width:190px"></label>' +
+              '<label style="display:block"><span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Роль</span>' +
+                '<select class="fld" id="admNewRole" style="width:auto">' +
+                  '<option value="user">пользователь</option>' +
+                  '<option value="admin">администратор</option>' +
+                '</select></label>' +
+              '<button class="btn primary" data-adm="adduser">Добавить</button>' +
+            '</div>' +
+            '<p style="font-size:11px;color:var(--txt-mute);margin-top:10px">Имя становится папкой: C:\\Users\\&lt;имя&gt;. Поэтому в нём нельзя использовать \\ / : * ? " &lt; &gt; |</p>' +
+          '</div></div>';
       },
       identity(g) {
         const f = (k, label, hint) => '<label style="display:block;margin-bottom:12px">' +
@@ -3091,10 +3339,11 @@ WM.register({
           '</div>';
       },
       power() {
-        const hasC = hasCode(), hasP = hasPass();
+        const hasC = hasCode();
+        const me = currentUser();
         return '<div class="set-grid adm">' +
           '<div class="set-card" style="grid-column:span 2"><h5>Код владельца</h5>' +
-            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Запасной вход: подходит вместо пароля на экране включения и блокировки, а также открывает эту панель. Хранится только отпечаток — сам код система показать не может.</p>' +
+            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Главный ключ системы: открывает эту панель и позволяет задать новый пароль любой учётной записи, если пароль забыт. Хранится только отпечаток — сам код система показать не может.</p>' +
             '<div class="spec"><span>Состояние</span><b style="color:' + (hasC ? '#5cffb0' : 'var(--txt-dim)') + '">' +
               (hasC ? 'код задан' : 'код не задан') + '</b></div>' +
             '<label style="display:block;margin:14px 0 8px">' +
@@ -3108,19 +3357,12 @@ WM.register({
             '</div>' +
             '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Заблокировать → «Забыли пароль?» → код владельца</b></div>' +
           '</div>' +
-          '<div class="set-card" style="grid-column:span 2"><h5>Пароль учётной записи</h5>' +
-            '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Основной вход: спрашивается сразу после кнопки питания, до появления монитора. Пользователь: ' + esc(USER) + '.</p>' +
-            '<div class="spec"><span>Состояние</span><b style="color:' + (hasP ? '#5cffb0' : 'var(--txt-dim)') + '">' +
-              (hasP ? 'пароль задан' : 'вход без пароля') + '</b></div>' +
-            '<label style="display:block;margin:14px 0 8px">' +
-              '<span style="display:block;font-size:11.5px;color:var(--txt-dim);margin-bottom:5px">Новый пароль</span>' +
-              '<input class="fld" id="admUserPass" type="password" autocomplete="off" maxlength="64" ' +
-                'placeholder="новый пароль" style="width:100%"></label>' +
-            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-              '<button class="btn primary" data-adm="setuserpass">Задать пароль</button>' +
-              '<button class="btn" data-adm="clearuserpass"' + (hasP ? '' : ' disabled') + '>Снять пароль</button>' +
-            '</div>' +
-            '<div class="spec" style="margin-top:14px"><span>Как проверить</span><b>Перезагрузить → кнопка питания → пароль</b></div>' +
+          '<div class="set-card" style="grid-column:span 2"><h5>Текущий сеанс</h5>' +
+            '<div class="spec"><span>Пользователь</span><b>' + esc(me.name) + '</b></div>' +
+            '<div class="spec"><span>Роль</span><b>' + (me.role === 'admin' ? 'администратор' : 'пользователь') + '</b></div>' +
+            '<div class="spec"><span>Домашняя папка</span><b class="mono">' + esc(HOME) + '</b></div>' +
+            '<p style="font-size:11.5px;color:var(--txt-dim);margin-top:12px">Пароли учётных записей меняются на вкладке «Пользователи».</p>' +
+            '<button class="btn" data-adm="signout" style="margin-top:12px">' + ICO.x + ' Выйти из панели</button>' +
           '</div>' +
           '<div class="set-card" style="grid-column:span 2"><h5>Плавность работы</h5>' +
             '<p style="font-size:12px;color:var(--txt-dim);margin:0 0 12px">Облегчённый режим убирает размытие подложек и тяжёлые анимации. Система включает его сама, если кадры проседают.</p>' +
@@ -3133,7 +3375,6 @@ WM.register({
             '<button class="chip" data-adm="sleep">' + ICO.moon + ' Спящий режим</button>' +
             '<button class="chip" data-adm="restart">' + ICO.power + ' Перезапуск</button>' +
             '<button class="chip" data-adm="shutdown">' + ICO.power + ' Выключить</button>' +
-            '<button class="chip" data-adm="signout">' + ICO.x + ' Выйти из панели</button>' +
           '</div><p style="font-size:11.5px;color:var(--txt-dim);margin-top:14px">Перезапуск и выключение перезагружают страницу: виртуальная ФС сбрасывается к исходной, настройки и код сохраняются.</p></div></div>';
       },
       log() {
@@ -3216,6 +3457,55 @@ WM.register({
           Notify('Панель администратора', 'Файловая система восстановлена.', ICO.refresh, true);
           render(); return;
         case 'clearlog': State.adminLog = []; render(); return;
+        case 'adduser': {
+          const ni = $('#admNewUser', main), pi = $('#admNewPass', main), ri = $('#admNewRole', main);
+          const r = Users.add(ni ? ni.value : '', pi ? pi.value : '', ri ? ri.value : 'user');
+          if (!r.ok) { admUserErr = r.err; Sound.error(); render(); return; }
+          admUserErr = '';
+          log_('Добавлена учётная запись: ' + r.name);
+          Sound.notif();
+          Notify('Панель администратора', 'Учётная запись «' + r.name + '» создана.', ICO.shield, true);
+          render(); return;
+        }
+        case 'saveuserpass': {
+          const name = el.dataset.name;
+          const inp = main.querySelector('[data-passfor="' + name.replace(/"/g, '\\"') + '"]');
+          const r = Users.setPassword(name, inp ? inp.value : '');
+          if (!r.ok) { admUserErr = r.err; Sound.error(); render(); return; }
+          admUserErr = '';
+          log_('Сменён пароль учётной записи: ' + name);
+          Sound.notif();
+          Notify('Панель администратора', 'Пароль учётной записи «' + name + '» изменён.', ICO.shield, true);
+          render(); return;
+        }
+        case 'saveuserrole': {
+          const name = el.dataset.name;
+          const sel = main.querySelector('[data-rolefor="' + name.replace(/"/g, '\\"') + '"]');
+          const pass = main.querySelector('[data-passfor="' + name.replace(/"/g, '\\"') + '"]');
+          const role = sel ? sel.value : 'user';
+          /* Роль лежит внутри шифрованной части, поэтому перешиваем запись
+             новым паролем из соседнего поля. */
+          const r = Users.setRole(name, role, pass ? pass.value : '');
+          if (!r.ok) { admUserErr = r.err; Sound.error(); render(); return; }
+          admUserErr = '';
+          log_('Роль изменена: ' + name + ' → ' + role);
+          Sound.notif();
+          Notify('Панель администратора', 'Роль «' + name + '»: ' + (role === 'admin' ? 'администратор' : 'пользователь') + '.', ICO.shield, true);
+          render(); return;
+        }
+        case 'deluser': {
+          const name = el.dataset.name;
+          const r = Users.remove(name);
+          if (!r.ok) { admUserErr = r.err; Sound.error(); render(); return; }
+          admUserErr = '';
+          /* Удаляем и домашнюю папку: иначе остаётся мусор от чужой записи. */
+          VFS.rm('C:\\Users\\' + name, true);
+          try { localStorage.removeItem('lumen.deskItems.' + name); } catch (e) { /* недоступно */ }
+          log_('Удалена учётная запись: ' + name);
+          Sound.notif();
+          Notify('Панель администратора', 'Учётная запись «' + name + '» удалена.', ICO.trash, true);
+          render(); return;
+        }
         case 'setlockcode': {
           const inp = $('#admLockCode', main);
           const code = inp ? inp.value.trim() : '';
@@ -3233,20 +3523,6 @@ WM.register({
           State.locked = false;
           log_('Код владельца снят');
           Notify('Панель администратора', 'Код владельца снят. Вход без кода.', ICO.refresh, true);
-          render(); return;
-        case 'setuserpass': {
-          const i = $('#admUserPass', main);
-          const v = i ? i.value : '';
-          if (!v.trim()) { Notify('Панель администратора', 'Введите пароль.', ICO.shield); return; }
-          setPass(v.trim());
-          log_('Пароль учётной записи изменён');
-          Notify('Панель администратора', 'Пароль учётной записи сохранён. Спросится при следующем включении.', ICO.shield, true);
-          render(); return;
-        }
-        case 'clearuserpass':
-          setPass('');
-          log_('Пароль учётной записи снят');
-          Notify('Панель администратора', 'Пароль снят. Вход без пароля.', ICO.refresh, true);
           render(); return;
         case 'testlock':
           log_('Блокировка компьютера из панели');
@@ -3298,7 +3574,7 @@ WM.register({
     main.onclick = e => {
       // --- панель администратора ---
       const at = e.target.closest('[data-admtab]');
-      if (at) { Sound.click(); admTab = at.dataset.admtab; render(); return; }
+      if (at) { Sound.click(); admTab = at.dataset.admtab; admUserErr = ''; render(); return; }
       const asw = e.target.closest('[data-admsw]');
       if (asw) {
         asw.classList.toggle('on');
@@ -3334,7 +3610,8 @@ WM.register({
     main.onkeydown = e => {
       if (e.key === 'Enter' && e.target.id === 'adminCode') { e.preventDefault(); adminLogin(); }
       if (e.key === 'Enter' && e.target.id === 'admLockCode') { e.preventDefault(); const b = main.querySelector('[data-adm="setlockcode"]'); if (b) adminAction(b); }
-      if (e.key === 'Enter' && e.target.id === 'admUserPass') { e.preventDefault(); const b = main.querySelector('[data-adm="setuserpass"]'); if (b) adminAction(b); }
+      if (e.key === 'Enter' && e.target.id === 'admNewUser') { e.preventDefault(); const b = main.querySelector('[data-adm="adduser"]'); if (b) adminAction(b); }
+      if (e.key === 'Enter' && e.target.id === 'admNewPass') { e.preventDefault(); const b = main.querySelector('[data-adm="adduser"]'); if (b) adminAction(b); }
       if (e.key === 'Enter' && e.target.id && e.target.id.indexOf('adm_') === 0) { e.preventDefault(); saveIdentity(); }
     };
     main.oninput = e => {
@@ -3374,10 +3651,18 @@ const PINNED = ['browser', 'games', 'explorer', 'terminal', 'settings', 'notepad
 /* --- Папки и файлы, созданные пользователем на рабочем столе ---
    Хранятся в виртуальной ФС (папка «Рабочий стол» в домашней папке), поэтому видны
    и в Проводнике, и в терминале. Список имён держим в localStorage,
-   чтобы значки не пропадали после перезагрузки. */
-const DESK_DIR = HOME + '\\Рабочий стол';
-const DESK_KEY = 'lumen.deskItems';
+   чтобы значки не пропадали после перезагрузки.
+   У каждой учётной записи свой рабочий стол и свой список. */
+let DESK_DIR = HOME + '\\Рабочий стол';
+let DESK_KEY = 'lumen.deskItems';
 let deskItems = [];
+
+/* Переключает рабочий стол на вошедшую учётную запись и читает её список. */
+function setDeskScope() {
+  DESK_DIR = HOME + '\\Рабочий стол';
+  DESK_KEY = 'lumen.deskItems.' + USER;
+  loadDeskItems();
+}
 
 function loadDeskItems() {
   try {
@@ -3385,6 +3670,7 @@ function loadDeskItems() {
     deskItems = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(deskItems)) deskItems = [];
   } catch (e) { deskItems = []; }
+  VFS.mkdir(HOME);
   VFS.mkdir(DESK_DIR);
   deskItems.forEach(it => {
     if (it.type === 'dir') VFS.mkdir(DESK_DIR + '\\' + it.name);
@@ -3834,14 +4120,17 @@ function lockScreen() {
   tickClock();
 }
 
-/* Экран блокировки просит пароль. Код владельца подходит вместо пароля — он
-   за ссылкой «Забыли пароль?». */
+/* Экран блокировки просит пароль текущей учётной записи. Код владельца — за
+   ссылкой «Забыли пароль?»: он задаёт новый пароль. */
 function paintLock() {
   const l = $('#lock');
   const need = needGate();
   l.classList.toggle('needcode', need);
   const hint = $('#lockHint');
-  if (hint) hint.textContent = need ? 'Ваш компьютер заблокирован. Введите пароль для разблокировки.' : 'Нажмите Enter, чтобы войти';
+  const u = currentUser();
+  if (hint) hint.textContent = need ? 'Введите пароль, чтобы разблокировать.' : 'Нажмите Enter, чтобы войти';
+  const who = $('#lockUser');
+  if (who) who.textContent = u.name;
   const btn = $('#lockBtn');
   if (btn) btn.style.display = need ? 'none' : '';
   const err = $('#lockErr');
@@ -3866,16 +4155,16 @@ function unlock() {
   setTimeout(() => { l.style.display = 'none'; }, 700);
 }
 
-/* Проверка входа на экране блокировки. Пароль — основной, код владельца
-   подходит вместо пароля. Кодов в коде нет — сверяем отпечатки: введённый
-   текст прогоняем через ту же соль и повторы. */
+/* Проверка входа на экране блокировки: пароль текущей учётной записи.
+   Открытого пароля нет — верный пароль расшифровывает запись. */
 function tryLockCode() {
   const inp = $('#lockCode'), err = $('#lockErr');
   if (!inp) return;
-  const val = inp.value.trim();
+  const val = inp.value;
   if (!val) { if (err) err.textContent = 'Введите пароль.'; return; }
-  const ok = Auth.check(val, State.auth.pass) || Auth.check(val, State.auth.code);
-  if (ok) {
+  const u = currentUser();
+  const who = Users.verify(u.name, val);
+  if (who) {
     State.locked = false;
     State.adminAttempts = 0;
     if (err) err.textContent = '';
@@ -3897,7 +4186,7 @@ function tryLockCode() {
   }
 }
 
-/* «Забыли пароль?» на экране блокировки: код владельца подходит вместо пароля. */
+/* «Забыли пароль?» на экране блокировки: код владельца задаёт новый пароль. */
 function openRecovery() {
   const l = $('#lock');
   if (!l) return;
@@ -3905,8 +4194,8 @@ function openRecovery() {
   if (!box) return;
   if (!hasCode()) {
     box.innerHTML =
-      '<div class="lock-title" style="display:block">Код владельца</div>' +
-      '<div class="lock-warn" style="color:#ffc65c;font-size:12px;max-width:330px;line-height:1.6;text-align:center">Код владельца не задан, поэтому запасного входа нет.</div>' +
+      '<div class="lock-title" style="display:block">Сброс недоступен</div>' +
+      '<div class="lock-warn" style="color:#ffc65c;font-size:12px;max-width:330px;line-height:1.6;text-align:center">Код владельца не задан, поэтому сменить пароль отсюда нельзя.</div>' +
       '<div class="lock-hint" style="margin-top:8px"><button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button></div>';
     const back = $('#recBack');
     if (back) back.onclick = () => { restoreLockBody(); paintLock(); };
@@ -3914,8 +4203,8 @@ function openRecovery() {
   }
   box.innerHTML =
     '<div class="lock-title" style="display:block">Код владельца</div>' +
-    '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Введите код владельца — он подходит вместо пароля.</div>' +
-    '<div class="lock-code" style="display:flex"><input id="lockOwnerIn" type="password" autocomplete="off" maxlength="64" placeholder="код владельца"><button class="lock-btn" id="lockOwnerBtn">Открыть</button></div>' +
+    '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Введите код владельца, чтобы задать новый пароль.</div>' +
+    '<div class="lock-code" style="display:flex"><input id="lockOwnerIn" type="password" autocomplete="off" maxlength="64" placeholder="код владельца"><button class="lock-btn" id="lockOwnerBtn">Далее</button></div>' +
     '<div class="lock-err" id="lockOwnerErr"></div>' +
     '<div class="lock-hint" style="margin-top:8px">' +
       '<button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button>' +
@@ -3931,7 +4220,7 @@ function openRecovery() {
   }
 }
 
-/* Код владельца на экране блокировки верный — пускаем в систему. */
+/* Код владельца на экране блокировки верный — задаём новый пароль. */
 function checkOwnerCode() {
   const inp = $('#lockOwnerIn'), err = $('#lockOwnerErr');
   if (!inp) return;
@@ -3944,19 +4233,40 @@ function checkOwnerCode() {
     inp.focus();
     return;
   }
-  restoreLockBody();
-  paintLock();
-  unlock();
-  Notify(SysInfo.get().name, 'Код владельца принят.', ICO.shield, true);
+  const box = $('#lockBody');
+  const u = currentUser();
+  box.innerHTML =
+    '<div class="lock-title" style="display:block">Новый пароль</div>' +
+    '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Учётная запись: ' + esc(u.name) + '. Задайте новый пароль.</div>' +
+    '<div class="lock-code" style="display:flex"><input id="lockNewIn" type="password" autocomplete="off" maxlength="64" placeholder="новый пароль, не короче 4 знаков"><button class="lock-btn" id="lockNewBtn">Сохранить</button></div>' +
+    '<div class="lock-err" id="lockNewErr"></div>' +
+    '<div class="lock-hint" style="margin-top:8px"><button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button></div>';
+  const back = $('#recBack');
+  if (back) back.onclick = () => { restoreLockBody(); paintLock(); };
+  const go = () => {
+    const ni = $('#lockNewIn'), ne = $('#lockNewErr');
+    const v = ni ? ni.value : '';
+    const r = Users.setPassword(u.name, v);
+    if (!r.ok) { Sound.error(); if (ne) ne.textContent = r.err; return; }
+    Sound.notif();
+    restoreLockBody();
+    paintLock();
+    unlock();
+    Notify(SysInfo.get().name, 'Пароль изменён. Добро пожаловать.', ICO.shield, true);
+  };
+  const nb = $('#lockNewBtn');
+  if (nb) nb.onclick = go;
+  const ni = $('#lockNewIn');
+  if (ni) { ni.focus(); ni.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); go(); } }; }
 }
 
-/* Возврат экрана блокировки к обычному виду после восстановления. */
+/* Возврат экрана блокировки к обычному виду: поле пароля и «Забыли пароль?». */
 function restoreLockBody() {
   const box = $('#lockBody');
   if (!box) return;
   box.innerHTML =
     '<div class="lock-title" id="lockTitle">Ваш компьютер заблокирован</div>' +
-    '<div class="lock-user" data-sys="user">Степан</div>' +
+    '<div class="lock-user" id="lockUser">Степан</div>' +
     '<div class="lock-hint" id="lockHint">Нажмите Enter, чтобы войти</div>' +
     '<div class="lock-code">' +
       '<input id="lockCode" type="password" autocomplete="off" maxlength="64" placeholder="пароль">' +
@@ -3964,13 +4274,14 @@ function restoreLockBody() {
     '</div>' +
     '<div class="lock-err" id="lockErr"></div>' +
     '<button class="lock-link" id="lockForgot">Забыли пароль?</button>';
-  SysInfo.apply();
   const btn = $('#lockCodeBtn');
   if (btn) btn.onclick = tryLockCode;
   const i = $('#lockCode');
   if (i) i.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); tryLockCode(); } };
   const f = $('#lockForgot');
   if (f) f.onclick = openRecovery;
+  const who = $('#lockUser');
+  if (who) who.textContent = currentUser().name;
 }
 function power(mode) {
   StartMenu.closeMenu(); Quick.close();
@@ -4016,60 +4327,169 @@ function initPowerOn() {
   }
   function askPassword() {
     if (!needGate()) { showMonitor(); return; }
+    if (isFirstRun()) { paintFirstRun(); po.classList.add('pass'); setTimeout(() => { const i = $('#fuName'); if (i) i.focus(); }, 220); return; }
     paintLogin();
     po.classList.add('pass');
-    setTimeout(() => { const i = $('#poPassInput'); if (i) { i.value = ''; i.focus(); } }, 220);
+    setTimeout(() => {
+      const i = $('#poPassInput');
+      const nu = $('#poUserName');
+      if (nu && nu.value) { if (i) { i.value = ''; i.focus(); } }
+      else if (nu) nu.focus();
+    }, 220);
   }
-  /* Экран входа: пароль учётной записи. Под ним — «Забыли пароль?», которая
-     открывает ввод кода владельца. */
+  /* Первый запуск: учётных записей нет, пароля по умолчанию не существует.
+     Владелец заводит первую учётную запись сам — она получает роль
+     администратора. Здесь же можно задать код владельца: без него сброс
+     забытого пароля невозможен. */
+  function paintFirstRun() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    card.innerHTML =
+      '<div class="avatar">Л</div>' +
+      '<div class="po-passname">Первый запуск</div>' +
+      '<div class="po-passhint">Заведите учётную запись владельца. Пароля по умолчанию нет — вы задаёте его сами, и он нигде не хранится открытым текстом.</div>' +
+      '<div class="po-passfield">' +
+        '<input id="fuName" type="text" autocomplete="off" maxlength="24" placeholder="имя владельца" value="Степан">' +
+      '</div>' +
+      '<div class="po-passfield">' +
+        '<input id="fuPass" type="password" autocomplete="off" maxlength="64" placeholder="пароль, не короче 4 знаков">' +
+      '</div>' +
+      '<div class="po-passfield">' +
+        '<input id="fuPass2" type="password" autocomplete="off" maxlength="64" placeholder="повторите пароль">' +
+        '<button class="lock-btn" id="fuBtn">Создать</button>' +
+      '</div>' +
+      '<div class="po-sep"></div>' +
+      '<div class="po-passhint">Код владельца — запасной вход и ключ к панели администратора. Если его не задать, забытый пароль восстановить будет нечем. Код необязателен, но лучше задать.</div>' +
+      '<div class="po-passfield">' +
+        '<input id="fuCode" type="password" autocomplete="off" maxlength="64" placeholder="код владельца, необязательно">' +
+      '</div>' +
+      '<div class="po-paserr" id="fuErr"></div>';
+    const go = () => {
+      const ni = $('#fuName'), p1 = $('#fuPass'), p2 = $('#fuPass2'), ci = $('#fuCode'), err = $('#fuErr');
+      const name = ni ? ni.value : '', a = p1 ? p1.value : '', b = p2 ? p2.value : '';
+      const code = ci ? ci.value.trim() : '';
+      const e = Users.nameError(name) || Users.passError(a);
+      if (e) { Sound.error(); if (err) err.textContent = e; return; }
+      if (a !== b) { Sound.error(); if (err) err.textContent = 'Пароли не совпадают.'; if (p2) { p2.value = ''; p2.focus(); } return; }
+      if (code && code.length < 4) { Sound.error(); if (err) err.textContent = 'Код владельца короче четырёх знаков.'; if (ci) ci.focus(); return; }
+      const r = Users.add(name, a, 'admin');
+      if (!r.ok) { Sound.error(); if (err) err.textContent = r.err; return; }
+      if (code) setCode(code);
+      Sound.notif();
+      Notify(SysInfo.get().name, 'Учётная запись «' + r.name + '» создана. Войдите в систему.', ICO.shield, true);
+      paintLogin();
+      setTimeout(() => { const n = $('#poUserName'), i = $('#poPassInput'); if (n) n.value = r.name; if (i) i.focus(); }, 120);
+    };
+    const btn = $('#fuBtn'); if (btn) btn.onclick = go;
+    [['#fuName', '#fuPass'], ['#fuPass', '#fuPass2'], ['#fuPass2', '#fuCode']].forEach(pair => {
+      const el = $(pair[0]);
+      if (el) el.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); const n = $(pair[1]); if (n) n.focus(); }
+      });
+    });
+    const ci = $('#fuCode');
+    if (ci) ci.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+  }
+  /* Экран входа: имя учётной записи и пароль. «Забыли пароль?» ведёт к сбросу
+     по коду владельца. */
   function paintLogin() {
     const card = $('#poPassCard');
     if (!card) return;
-    const pass = hasPass();
-    let h = '<div class="avatar" data-sys="user-initial">С</div>' +
-      '<div class="po-passname" data-sys="user">Степан</div>';
-    if (pass) {
-      h += '<div class="po-passhint">Система защищена. Введите пароль учётной записи.</div>' +
-        '<div class="po-passfield">' +
-          '<input id="poPassInput" type="password" autocomplete="off" maxlength="64" placeholder="пароль">' +
-          '<button class="lock-btn" id="poPassBtn">Войти</button>' +
-        '</div>' +
-        '<div class="po-paserr" id="poPassErr"></div>';
-    }
-    h += '<div class="po-actions">' +
-      '<button class="po-link" id="poForgot">Забыли пароль?</button>' +
+    let last = '';
+    try { last = localStorage.getItem('w12.lastuser') || ''; } catch (e) { /* недоступно */ }
+    if (!last || !Users.has(last)) last = Users.all()[0] ? Users.all()[0].name : USER;
+    card.innerHTML =
+      '<div class="avatar" data-sys="user-initial">' + esc((last[0] || 'Г').toUpperCase()) + '</div>' +
+      '<div class="po-passname">Вход в систему</div>' +
+      '<div class="po-passhint">Введите имя учётной записи и пароль.</div>' +
+      '<div class="po-passfield">' +
+        '<input id="poUserName" type="text" autocomplete="off" maxlength="24" placeholder="имя пользователя" value="' + esc(last) + '">' +
+      '</div>' +
+      '<div class="po-passfield">' +
+        '<input id="poPassInput" type="password" autocomplete="off" maxlength="64" placeholder="пароль">' +
+        '<button class="lock-btn" id="poPassBtn">Войти</button>' +
+      '</div>' +
+      '<div class="po-paserr" id="poPassErr"></div>' +
+      '<div class="po-actions">' +
+        '<button class="po-link" id="poForgot">Забыли пароль?</button>' +
       '</div>';
-    card.innerHTML = h;
     SysInfo.apply();
     const pb = $('#poPassBtn'); if (pb) pb.onclick = tryPass;
     const pin = $('#poPassInput');
     if (pin) pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryPass(); } });
+    const nui = $('#poUserName');
+    if (nui) nui.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const i = $('#poPassInput'); if (i) i.focus(); } });
     const fb = $('#poForgot'); if (fb) fb.onclick = forgotOnBoot;
   }
 
-  /* Забыли пароль: спрашиваем код владельца — он подходит вместо пароля. */
+  /* Забыли пароль: сначала код владельца, затем выбор учётной записи и новый
+     пароль. Открытый пароль нигде не хранится — задаём его заново. */
   function forgotOnBoot() {
     const card = $('#poPassCard');
     if (!card) return;
     if (!hasCode()) {
       card.innerHTML =
-        '<div class="po-passname">Код владельца</div>' +
-        '<div class="po-warn">Код владельца не задан, поэтому запасного входа нет.</div>' +
+        '<div class="po-passname">Сброс недоступен</div>' +
+        '<div class="po-warn">Код владельца не задан, поэтому сменить пароль отсюда нельзя.</div>' +
         '<div class="po-actions"><button class="po-link" id="poBack">← Назад ко входу</button></div>';
       const b = $('#poBack'); if (b) b.onclick = paintLogin;
       return;
     }
     card.innerHTML =
       '<div class="po-passname">Код владельца</div>' +
-      '<div class="po-passhint">Введите код владельца — он подходит вместо пароля.</div>' +
-      '<div class="po-passfield"><input id="poCodeInput" type="password" autocomplete="off" maxlength="64" placeholder="код владельца"><button class="lock-btn" id="poCodeBtn">Открыть</button></div>' +
+      '<div class="po-passhint">Введите код владельца, чтобы задать новый пароль учётной записи.</div>' +
+      '<div class="po-passfield"><input id="poCodeInput" type="password" autocomplete="off" maxlength="64" placeholder="код владельца"><button class="lock-btn" id="poCodeBtn">Далее</button></div>' +
       '<div class="po-coderr" id="poCodeErr"></div>' +
-      '<div class="po-actions">' +
-        '<button class="po-link" id="poBack">← Назад ко входу</button>' +
-      '</div>';
+      '<div class="po-actions"><button class="po-link" id="poBack">← Назад ко входу</button></div>';
     const cb = $('#poCodeBtn'); if (cb) cb.onclick = tryCode;
     const cin = $('#poCodeInput');
     if (cin) { cin.focus(); cin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryCode(); } }); }
+    const b = $('#poBack'); if (b) b.onclick = paintLogin;
+  }
+
+  /* Код владельца верный — выбираем, кому меняем пароль. */
+  function paintChooseUser() {
+    const card = $('#poPassCard');
+    if (!card) return;
+    const list = Users.all();
+    if (list.length === 1) { paintResetPass(list[0].name); return; }
+    card.innerHTML =
+      '<div class="po-passname">Кому меняем пароль?</div>' +
+      '<div class="po-passhint">Выберите учётную запись.</div>' +
+      '<div class="po-userlist">' +
+        list.map(u => '<button class="po-userrow" data-user="' + esc(u.name) + '">' +
+          '<span>' + esc(u.name) + '</span><small>' + (u.role === 'admin' ? 'администратор' : 'пользователь') + '</small></button>').join('') +
+      '</div>' +
+      '<div class="po-actions"><button class="po-link" id="poBack">← Назад ко входу</button></div>';
+    card.querySelectorAll('[data-user]').forEach(btn => {
+      btn.onclick = () => paintResetPass(btn.dataset.user);
+    });
+    const b = $('#poBack'); if (b) b.onclick = paintLogin;
+  }
+
+  /* Новый пароль выбранной учётной записи. */
+  function paintResetPass(name) {
+    const card = $('#poPassCard');
+    if (!card) return;
+    card.innerHTML =
+      '<div class="po-passname">Новый пароль</div>' +
+      '<div class="po-passhint">Учётная запись: ' + esc(name) + '. Задайте новый пароль — им будете входить в систему.</div>' +
+      '<div class="po-passfield"><input id="poNewIn" type="password" autocomplete="off" maxlength="64" placeholder="новый пароль, не короче 4 знаков"><button class="lock-btn" id="poNewBtn">Сохранить</button></div>' +
+      '<div class="po-paserr" id="poNewErr"></div>' +
+      '<div class="po-actions"><button class="po-link" id="poBack">← Назад ко входу</button></div>';
+    const go = () => {
+      const inp = $('#poNewIn'), err = $('#poNewErr');
+      const v = inp ? inp.value : '';
+      const r = Users.setPassword(name, v);
+      if (!r.ok) { Sound.error(); if (err) err.textContent = r.err; return; }
+      Sound.notif();
+      Notify(SysInfo.get().name, 'Пароль учётной записи «' + name + '» изменён.', ICO.shield, true);
+      paintLogin();
+      setTimeout(() => { const n = $('#poUserName'), i = $('#poPassInput'); if (n) n.value = name; if (i) i.focus(); }, 100);
+    };
+    $('#poNewBtn').onclick = go;
+    const i = $('#poNewIn');
+    if (i) { i.focus(); i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } }); }
     const b = $('#poBack'); if (b) b.onclick = paintLogin;
   }
 
@@ -4083,23 +4503,27 @@ function initPowerOn() {
     Sound.open();
     setTimeout(showMonitor, 620);
   }
-  /* Пароль учётной записи: сверяем отпечаток, а не текст. */
+  /* Вход: имя и пароль сверяем с учётной записью. Пароль нигде не хранится —
+     верный пароль расшифровывает запись. */
   function tryPass() {
-    const inp = $('#poPassInput'), err = $('#poPassErr');
+    const nui = $('#poUserName'), inp = $('#poPassInput'), err = $('#poPassErr');
     if (!inp) return;
+    const name = nui ? nui.value.trim() : '';
     const val = inp.value;
+    if (!name) { if (err) err.textContent = 'Введите имя пользователя.'; if (nui) nui.focus(); return; }
     if (!val) { if (err) err.textContent = 'Введите пароль.'; return; }
-    if (Auth.check(val, State.auth.pass)) { passOk(); return; }
+    const u = Users.verify(name, val);
+    if (u) { setCurrentUser(u.name); applyCurrentUser(); passOk(); return; }
     Sound.error();
     State.passTries = (State.passTries || 0) + 1;
-    if (err) err.textContent = 'Неверный пароль. Попытка ' + State.passTries + '.';
+    if (err) err.textContent = 'Неверное имя или пароль. Попытка ' + State.passTries + '.';
     inp.value = '';
     inp.focus();
     $('#poPass').animate(
       [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }],
       { duration: 260 });
   }
-  /* Код владельца: подходит вместо пароля. Сверяем отпечаток. */
+  /* Код владельца: открывает сброс пароля. Сверяем отпечаток. */
   function tryCode() {
     const inp = $('#poCodeInput'), err = $('#poCodeErr');
     if (!inp) return;
@@ -4107,7 +4531,7 @@ function initPowerOn() {
     if (!val) { if (err) err.textContent = 'Введите код владельца.'; return; }
     if (Auth.check(val, State.auth.code)) {
       if (err) err.textContent = '';
-      passOk();
+      paintChooseUser();
       return;
     }
     Sound.error();
@@ -4265,22 +4689,27 @@ function loadPrefs() {
     const w = localStorage.getItem('w12.wall'); if (w && WALLS.indexOf(w) >= 0) applyWall(w);
     const tr = localStorage.getItem('w12.transp'); if (tr !== null) applyTransparency(tr === '1');
     const al = localStorage.getItem('w12.align'); if (al) applyAlign(al);
-    // Доступ: только отпечатки пароля, кода владельца и кода восстановления.
+    // Доступ: только отпечаток кода владельца.
     const au = localStorage.getItem('w12.auth');
     if (au) {
       const a = JSON.parse(au);
-      if (a && a.ver === 1) State.auth = Object.assign({}, DEFAULT_AUTH, a);
+      if (a && (a.ver === 2 || a.ver === 1)) {
+        State.auth = Object.assign({}, DEFAULT_AUTH, a);
+        /* Прежняя версия держала отпечаток пароля прямо здесь. Пароли теперь
+           живут в записях пользователей, поэтому отпечаток убираем. */
+        delete State.auth.pass;
+        State.auth.ver = 2;
+      }
     }
   } catch (e) { /* хранилище недоступно */ }
 }
-/* Сохранение данных доступа. Открытых кодов здесь нет — только отпечатки. */
+/* Сохранение кода владельца. Открытого текста здесь нет — только отпечаток. */
 function saveAuth() {
   try { localStorage.setItem('w12.auth', JSON.stringify(State.auth)); }
   catch (e) { /* хранилище недоступно */ }
 }
-/* Смена одного отпечатка без затрагивания остальных. */
+/* Смена отпечатка кода владельца. */
 function setCode(text) { State.auth.code = Auth.make(text); State.auth.ready = true; saveAuth(); }
-function setPass(text) { State.auth.pass = text ? Auth.make(text) : null; saveAuth(); }
 function bootSequence() {
   const TIPS = ['Инициализация ядра люмен…', 'Монтирование виртуальной ФС…', 'Запуск оконного менеджера «Плексус»…',
     'Калибровка снапа на 12 зон…', 'Синтез звуковой подсистемы…', 'Загрузка профиля «' + USER + '»…', 'Почти готово…'];
@@ -4364,7 +4793,13 @@ function initResponsive() {
 function init() {
   loadPrefs();
   autoTune();
-  loadDeskItems();
+  /* До входа подставляем последнюю учётную запись, чтобы домашняя папка и
+     рабочий стол были её. Настоящий вход подтвердит выбор паролем. */
+  try {
+    const last = localStorage.getItem('w12.lastuser');
+    if (last && Users.has(last)) setCurrentUser(last);
+  } catch (e) { /* недоступно */ }
+  setDeskScope();
   SysInfo.apply();
   renderIcons();
   renderTaskbar();
