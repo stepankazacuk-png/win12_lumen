@@ -4192,7 +4192,7 @@ function openRecovery() {
   if (u.role !== 'admin') {
     box.innerHTML =
       '<div class="lock-title" style="display:block">Смена пароля недоступна</div>' +
-      '<div class="lock-warn" style="color:#ffc65c;font-size:12px;max-width:330px;line-height:1.6;text-align:center">Смена пароля пользователя недоступна: её может делать только администратор.</div>' +
+      '<div class="lock-warn" style="font-size:12px;max-width:330px;line-height:1.6;text-align:center">Смена пароля пользователя недоступна: её может делать только администратор.</div>' +
       '<div class="lock-hint" style="margin-top:8px"><button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button></div>';
     const back = $('#recBack');
     if (back) back.onclick = () => { restoreLockBody(); paintLock(); };
@@ -4200,7 +4200,7 @@ function openRecovery() {
   }
   box.innerHTML =
     '<div class="lock-title" style="display:block">Код владельца</div>' +
-    '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Введите код владельца, чтобы задать новый пароль.</div>' +
+    '<div class="lock-hint">Введите код владельца, чтобы задать новый пароль.</div>' +
     '<div class="lock-code" style="display:flex"><input id="lockOwnerIn" type="password" autocomplete="off" maxlength="64" placeholder="код владельца"><button class="lock-btn" id="lockOwnerBtn">Далее</button></div>' +
     '<div class="lock-err" id="lockOwnerErr"></div>' +
     '<div class="lock-hint" style="margin-top:8px">' +
@@ -4234,7 +4234,7 @@ function checkOwnerCode() {
   const u = currentUser();
   box.innerHTML =
     '<div class="lock-title" style="display:block">Новый пароль</div>' +
-    '<div class="lock-hint" style="color:rgba(255,255,255,.72)">Учётная запись: ' + esc(u.name) + '. Задайте новый пароль.</div>' +
+    '<div class="lock-hint">Учётная запись: ' + esc(u.name) + '. Задайте новый пароль.</div>' +
     '<div class="lock-code" style="display:flex"><input id="lockNewIn" type="password" autocomplete="off" maxlength="64" placeholder="новый пароль, не короче 4 знаков"><button class="lock-btn" id="lockNewBtn">Сохранить</button></div>' +
     '<div class="lock-err" id="lockNewErr"></div>' +
     '<div class="lock-hint" style="margin-top:8px"><button class="lock-link" id="recBack" style="display:inline-block">← Назад ко входу</button></div>';
@@ -4295,7 +4295,7 @@ function power(mode) {
     if (mode === 'restart') { location.reload(); return; }
     shut.innerHTML = '<div style="text-align:center">' +
       '<div style="width:78px;height:78px;margin:0 auto 22px;opacity:.5"><svg viewBox="0 0 100 100"><use href="#winLogo"/></svg></div>' +
-      '<div style="font-family:var(--font-display);font-weight:300;font-size:16px;color:var(--txt-dim)">Питание отключено. Нажмите кнопку, чтобы включить.</div>' +
+      '<div style="font-family:var(--font-display);font-weight:300;font-size:16px;color:#9aa6c4">Питание отключено. Нажмите кнопку, чтобы включить.</div>' +
       '<button class="btn primary" id="wakeBtn" style="margin-top:26px;padding:12px 26px">Включить</button></div>';
     $('#wakeBtn').onclick = () => location.reload();
   }, 2400);

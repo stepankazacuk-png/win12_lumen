@@ -76,6 +76,20 @@ html[data-theme="light"] .po-coderr{color:#c02a3c}
 html[data-theme="light"] .po-sep{background:rgba(10,20,50,.1)}
 html[data-theme="light"] .mon-off{background:#e9eef8}
 html[data-theme="light"] .mon-off .mon-offword{color:#8d97b4}
+/* Экран блокировки: обои светлые, а часть надписей задана белым. Перекрашиваем
+   их, иначе дата, имя и подсказка пропадают на светлом фоне. */
+html[data-theme="light"] .lock-date{color:var(--txt)}
+html[data-theme="light"] .lock-user{color:var(--txt)}
+html[data-theme="light"] #lock.needcode .lock-user{color:var(--txt)}
+html[data-theme="light"] .lock-hint{color:var(--txt-dim)}
+html[data-theme="light"] #lock.needcode .lock-hint{color:#8a5a00}
+html[data-theme="light"] .lock-btn{background:rgba(255,255,255,.7);border-color:rgba(10,20,50,.14);color:var(--txt)}
+html[data-theme="light"] .lock-btn:hover{background:rgba(255,255,255,.92)}
+html[data-theme="light"] .lock-clock{text-shadow:0 8px 50px rgba(20,30,70,.22)}
+html[data-theme="light"] .lock-code input{background:rgba(255,255,255,.75);border-color:rgba(10,20,50,.16);color:var(--txt)}
+html[data-theme="light"] .lock-warn{color:#8a5a00}
+html[data-theme="light"] .lock-err{color:#c02a3c}
+html[data-theme="light"] .spinner{border-color:rgba(10,20,50,.14);border-top-color:var(--accent)}
 
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;height:100dvh}
@@ -123,11 +137,15 @@ input,textarea{font:inherit;color:inherit}
 .boot-inner{display:flex;flex-direction:column;align-items:center;gap:34px}
 .boot-logo{display:flex;align-items:center;gap:20px}
 .boot-mark{width:78px;height:78px;filter:drop-shadow(0 0 26px rgba(92,200,255,.5));animation:markIn 1.1s var(--ease-out) both}
-.boot-word{font-family:var(--font-display);font-weight:300;font-size:40px;letter-spacing:.14em;text-transform:uppercase;opacity:0;animation:wordIn 1s .35s var(--ease-out) forwards}
-.boot-word b{font-weight:800;color:var(--accent)}
+/* Экран загрузки всегда тёмный, поэтому его надписи задаём явно светлыми.
+   Из темы цвет брать нельзя: в светлой теме текст стал бы тёмным на тёмном. */
+.boot-word{font-family:var(--font-display);font-weight:300;font-size:40px;letter-spacing:.14em;text-transform:uppercase;opacity:0;color:#eaf1ff;
+  text-shadow:0 0 26px rgba(92,200,255,.55),0 0 60px rgba(123,108,255,.35);
+  animation:wordIn 1s .35s var(--ease-out) forwards}
+.boot-word b{font-weight:800;color:var(--accent);text-shadow:0 0 24px rgba(92,200,255,.75)}
 .boot-bar{width:230px;height:3px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
 .boot-bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2),var(--accent-3))}
-.boot-tip{font-size:12px;color:var(--txt-mute);letter-spacing:.16em;text-transform:uppercase;font-family:var(--font-mono)}
+.boot-tip{font-size:12px;color:#8f9ab8;letter-spacing:.16em;text-transform:uppercase;font-family:var(--font-mono)}
 @keyframes markIn{from{opacity:0;transform:scale(.7) rotate(-14deg)}to{opacity:1;transform:none}}
 @keyframes wordIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 
@@ -718,7 +736,7 @@ html.lite #monitor.zoom{animation:none}
   box-shadow:0 0 26px rgba(92,200,255,.75),inset 0 1px 0 rgba(255,255,255,.5)}
 #poweron.lit .po-ring{border-color:rgba(92,200,255,.55);animation:poPulse 1.8s ease-out infinite}
 @keyframes poPulse{0%{transform:scale(.94);opacity:.9}100%{transform:scale(1.25);opacity:0}}
-.po-btnlabel{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--txt-mute,#6f7d99)}
+.po-btnlabel{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8f9ab8}
 .po-leds{display:flex;gap:10px}
 .po-led{width:9px;height:9px;border-radius:50%;background:#242c3d;border:1px solid rgba(255,255,255,.1);transition:.4s}
 #poweron.lit #poLedPwr{background:#4ee1a0;box-shadow:0 0 10px #4ee1a0}
@@ -728,9 +746,9 @@ html.lite #monitor.zoom{animation:none}
 .po-slot i{display:block;height:100%;width:40%;background:linear-gradient(90deg,transparent,rgba(92,200,255,.5),transparent);opacity:0}
 #poweron.lit .po-slot i{opacity:1;animation:poSlot 3.2s ease-in-out infinite}
 @keyframes poSlot{0%{transform:translateX(-60%)}100%{transform:translateX(160%)}}
-.po-brand{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:.5}
-.po-brand svg{width:22px;height:22px}
-.po-brand b{font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.po-brand{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:.75}
+.po-brand svg{width:22px;height:22px;color:#cfe0ff}
+.po-brand b{font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#cfe0ff}
 .po-stand{width:150px;height:22px;border-radius:0 0 16px 16px;background:linear-gradient(180deg,#1b2130,#0a0e18);
   box-shadow:0 22px 44px rgba(0,0,0,.5)}
 
@@ -830,6 +848,7 @@ html.lite #monitor.zoom{animation:none}
   text-align:center;outline:none}
 .lock-code input:focus{border-color:var(--accent,#5cc8ff);box-shadow:0 0 0 4px rgba(92,200,255,.16)}
 .lock-err{font-size:12px;color:#ff8a9b;font-weight:600;min-height:16px;margin-top:8px;text-align:center}
+.lock-warn{font-size:12px;color:#ffc65c;max-width:330px;line-height:1.6;text-align:center}
 .spinner{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.16);border-top-color:var(--accent);animation:spin .9s linear infinite}
 
 /* volume/brightness overlays */
