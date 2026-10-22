@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Люмен — презентация школьного проекта</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --a1:#5cc8ff; --a2:#7b6cff; --a3:#ff5c9e;
+  --ink:#eef1f8; --dim:#a8b1c9; --mute:#8f98b6;
+  --glass:rgba(18,21,34,.58); --solid:#11141f;
+  --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.18);
+  --ui:'Manrope','Segoe UI',system-ui,sans-serif;
+  --dis:'Unbounded','Manrope',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:#04050a; color:var(--ink); font-family:var(--ui);
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+}
+/* ── Северное сияние на фоне ───────────────────────────────── */
+.aurora{position:fixed;inset:-20%;z-index:0;pointer-events:none;filter:blur(80px);opacity:.5}
+.aurora i{position:absolute;display:block;border-radius:50%;mix-blend-mode:screen;animation:drift 22s ease-in-out infinite}
+.aurora i:nth-child(1){width:52vw;height:52vw;left:2%;top:4%;background:radial-gradient(circle,rgba(92,200,255,.5),transparent 65%)}
+.aurora i:nth-child(2){width:46vw;height:46vw;right:4%;top:14%;background:radial-gradient(circle,rgba(123,108,255,.45),transparent 65%);animation-delay:-7s}
+.aurora i:nth-child(3){width:40vw;height:40vw;left:26%;bottom:-8%;background:radial-gradient(circle,rgba(255,92,158,.32),transparent 65%);animation-delay:-13s}
+@keyframes drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(4%,-5%) scale(1.1)}66%{transform:translate(-4%,4%) scale(.95)}}
+
+/* ── Сцена и масштаб ───────────────────────────────────────── */
+.stage{position:relative;z-index:1;width:1280px;height:720px;flex:none;transform-origin:center center}
+.slide{
+  position:absolute;inset:0;padding:44px 54px;
+  background:linear-gradient(150deg,rgba(20,24,40,.82),rgba(9,11,20,.88));
+  border:1px solid var(--line);border-radius:26px;
+  box-shadow:0 40px 120px -30px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter:blur(20px) saturate(160%);
+  display:none;flex-direction:column;overflow:hidden;
+}
+.slide.on{display:flex;animation:in .5s cubic-bezier(.16,1,.3,1)}
+@keyframes in{from{opacity:0;transform:translateY(14px) scale(.99)}to{opacity:1;transform:none}}
+.slide::after{content:'';position:absolute;inset:0;border-radius:26px;pointer-events:none;
+  background:radial-gradient(120% 80% at 100% 0%,rgba(92,200,255,.10),transparent 60%)}
+
+/* ── Типографика слайда ────────────────────────────────────── */
+.kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--a1);display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.kicker::before{content:'';width:22px;height:1px;background:var(--a1);opacity:.7}
+h1.big{font-family:var(--dis);font-weight:300;font-size:96px;line-height:.94;letter-spacing:-.02em}
+h2{font-family:var(--dis);font-weight:300;font-size:40px;line-height:1.1;letter-spacing:-.01em}
+h2 em{font-style:normal;background:linear-gradient(100deg,var(--a1),var(--a2) 55%,var(--a3));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{color:var(--dim);font-size:16px;line-height:1.6;max-width:62ch;margin-top:12px}
+.small{font-size:12.5px;color:var(--mute);font-family:var(--mono)}
+
+/* ── Двухколоночная раскладка ──────────────────────────────── */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:center;flex:1;min-height:0}
+.col{min-width:0}
+
+/* ── Картинки ──────────────────────────────────────────────── */
+figure{margin:0}
+.shot{border-radius:14px;border:1px solid var(--line2);overflow:hidden;
+  box-shadow:0 26px 60px -22px rgba(0,0,0,.9),0 0 0 1px rgba(92,200,255,.08)}
+.shot img{display:block;width:100%;height:auto}
+.cap{font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:9px;letter-spacing:.06em}
+.hero{box-shadow:0 40px 90px -30px rgba(0,0,0,.95),0 0 60px -10px rgba(92,200,255,.28)}
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.row4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+
+/* ── Карточки ──────────────────────────────────────────────── */
+.card{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:16px 18px;
+  backdrop-filter:blur(10px)}
+.card b{display:block;font-size:14.5px;font-weight:700;margin-bottom:5px}
+.card p{font-size:12.8px;color:var(--dim);line-height:1.5}
+.cards{display:grid;gap:12px;margin-top:20px}
+
+/* ── Этапы ─────────────────────────────────────────────────── */
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:18px}
+.step{position:relative;background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:14px 14px 16px}
+.step .n{font-family:var(--dis);font-size:26px;font-weight:300;
+  background:linear-gradient(120deg,var(--a1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.step b{display:block;font-size:13px;margin:6px 0 4px}
+.step p{font-size:11.6px;color:var(--dim);line-height:1.45}
+
+/* ── Код ───────────────────────────────────────────────────── */
+.code{background:#0a0d18;border:1px solid var(--line);border-radius:14px;padding:14px 16px;
+  font-family:var(--mono);font-size:11.4px;line-height:1.65;color:#c9d4f0;overflow:hidden}
+.code .c{color:#5c6a8f}
+.code .k{color:var(--a3)}
+.code .v{color:var(--a1)}
+.code .s{color:#8de6b0}
+
+/* ── Цифры ─────────────────────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:22px 0}
+.stat{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:18px 16px;text-align:center}
+.stat b{display:block;font-family:var(--dis);font-size:38px;font-weight:300;line-height:1;
+  background:linear-gradient(120deg,var(--a1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat span{display:block;font-size:11.5px;color:var(--dim);margin-top:8px}
+
+/* ── Опрос ─────────────────────────────────────────────────── */
+.poll{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+.poll h4{font-family:var(--dis);font-weight:300;font-size:17px;margin-bottom:12px}
+.poll li{list-style:none;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--dim);
+  padding:7px 0;border-bottom:1px dashed rgba(255,255,255,.07)}
+.poll li:last-child{border:0}
+.poll li i{width:9px;height:9px;border-radius:50%;background:var(--a1);flex:none;box-shadow:0 0 10px var(--a1)}
+.poll li:nth-child(2) i{background:var(--a2);box-shadow:0 0 10px var(--a2)}
+.poll li:nth-child(3) i{background:var(--a3);box-shadow:0 0 10px var(--a3)}
+.poll li:nth-child(4) i{background:#38e0a8;box-shadow:0 0 10px #38e0a8}
+.qr{display:flex;flex-direction:column;align-items:center;gap:10px}
+.qr img{width:190px;border-radius:14px;border:1px solid var(--line2);background:#fff;padding:8px;
+  box-shadow:0 20px 50px -20px rgba(92,200,255,.4)}
+.qr span{font-family:var(--mono);font-size:10.5px;color:var(--mute);text-align:center;line-height:1.5}
+
+/* ── Заметки ───────────────────────────────────────────────── */
+.notes{display:none;position:absolute;left:0;right:0;bottom:0;z-index:5;
+  background:linear-gradient(180deg,rgba(6,8,16,.6),rgba(6,8,16,.97));
+  border-top:1px solid var(--line2);padding:16px 54px 20px;
+  font-size:13.5px;line-height:1.65;color:#cbd4ee;max-height:46%;overflow:auto}
+.notes b{color:var(--a1);font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;
+  text-transform:uppercase;display:block;margin-bottom:7px}
+body.notes-on .slide.on .notes{display:block}
+
+/* ── Приборная панель ──────────────────────────────────────── */
+.hud{position:fixed;z-index:9;left:0;right:0;bottom:14px;display:flex;justify-content:center;
+  align-items:center;gap:14px;pointer-events:none}
+.hud>*{pointer-events:auto}
+.hud button{background:var(--glass);border:1px solid var(--line2);color:var(--ink);border-radius:11px;
+  width:38px;height:38px;font-size:16px;cursor:pointer;backdrop-filter:blur(10px);transition:.18s}
+.hud button:hover{border-color:var(--a1);color:var(--a1)}
+.count{font-family:var(--mono);font-size:12px;color:var(--dim);min-width:54px;text-align:center}
+.dots{position:fixed;z-index:9;top:18px;left:50%;transform:translateX(-50%);display:flex;gap:7px}
+.dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;transition:.2s}
+.dots i.on{background:var(--a1);box-shadow:0 0 10px var(--a1);width:20px;border-radius:4px}
+.bar{position:fixed;z-index:9;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--a1),var(--a2),var(--a3));
+  transition:width .35s cubic-bezier(.16,1,.3,1)}
+.hint{position:fixed;z-index:9;right:18px;bottom:20px;font-family:var(--mono);font-size:10.5px;color:var(--mute)}
+
+@media print{
+  @page{size:1280px 720px;margin:0}
+  body{overflow:visible;display:block;background:#04050a}
+  .aurora,.hud,.dots,.bar,.hint{display:none}
+  .stage{width:1280px;height:auto;transform:none!important}
+  .slide{position:relative;display:flex!important;page-break-after:always;animation:none;
+    height:720px;border-radius:0}
+  .notes{display:none!important}
+}
+</style>
+</head>
+<body>
+<div class="aurora"><i></i><i></i><i></i></div>
+<div class="dots" id="dots"></div>
+<div class="bar" id="bar"></div>
+
+<div class="stage" id="stage">
+
+<!-- ══════════════ 1. ТИТУЛ ══════════════ -->
+<section class="slide on" data-t="Титул">
+  <div class="split">
+    <div class="col">
+      <div class="kicker">Школьный проект · информатика</div>
+      <h1 class="big">ЛЮМЕН</h1>
+      <p class="lede">Компьютерная система, которой не существует, —<br>и которая работает прямо в браузере.</p>
+      <p class="small" style="margin-top:26px">Автор: Степан &nbsp;·&nbsp; 2026 год</p>
+    </div>
+    <div class="col">
+      <figure>
+        <div class="shot hero"><img src="img/04-desktop.png" alt="Рабочий стол системы Люмен"></div>
+        <div class="cap">Так выглядит рабочий стол «Люмена»</div>
+      </figure>
+    </div>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    Здравствуйте. Меня зовут Степан. Я сделала компьютерную систему «Люмен». Её особенность в том, что она живёт только в браузере: её не нужно устанавливать на компьютер. Достаточно открыть ссылку — и ты уже работаешь в системе. Сегодня я покажу, как она устроена и как я её делала.</aside>
+</section>
+
+<!-- ══════════════ 2. ЗАДАЧА ══════════════ -->
+<section class="slide" data-t="Задача">
+  <div class="kicker">Задача</div>
+  <h2>Придумать систему, <em>которой нет</em></h2>
+  <div class="split" style="margin-top:8px">
+    <div class="col">
+      <p class="lede">Обычная система — это много программ, которые занимают место на диске.
+        Я поставила другую задачу: сделать систему, которой нет ни на одном компьютере,
+        но которой можно пользоваться.</p>
+      <div class="cards">
+        <div class="card"><b>Только браузер</b><p>Открыл ссылку — и работаешь. Ничего не надо ставить.</p></div>
+        <div class="card"><b>Без готовых библиотек</b><p>Всё написано вручную: разметка, оформление и логика.</p></div>
+        <div class="card"><b>Свой характер</b><p>Русский язык, стекло, северное сияние, две темы.</p></div>
+      </div>
+    </div>
+    <div class="col">
+      <figure>
+        <div class="shot"><img src="img/11-start.png" alt="Меню Пуск со списком программ"></div>
+        <div class="cap">Меню «Пуск»: все программы под рукой</div>
+      </figure>
+    </div>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    Обычная операционная система — это огромный набор программ, и занимает она много места. Я поставила себе другую задачу: сделать систему, которой нет ни на одном компьютере, но которой реально можно пользоваться. Всё в ней написано вручную — я не брала готовые библиотеки. И у неё есть свой характер: русский язык, стекло, свечение и две темы оформления.</aside>
+</section>
+
+<!-- ══════════════ 3. ЭТАПЫ ══════════════ -->
+<section class="slide" data-t="Как я это делала">
+  <div class="kicker">Как я это делала</div>
+  <h2>Пять <em>этапов</em> работы</h2>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><b>Каркас</b><p>Разметка экранов и окон</p></div>
+    <div class="step"><div class="n">2</div><b>Внешний вид</b><p>Стекло, свечение, две темы</p></div>
+    <div class="step"><div class="n">3</div><b>Логика</b><p>Окна, папки, файлы</p></div>
+    <div class="step"><div class="n">4</div><b>Программы</b><p>16 приложений и 5 игр</p></div>
+    <div class="step"><div class="n">5</div><b>Проверка</b><p>Снимки экранов, читаемость</p></div>
+  </div>
+  <div class="split" style="margin-top:16px;align-items:start">
+    <div class="col">
+      <div class="code">
+<span class="c">/* styles.css — цвета системы */</span><br>
+<span class="k">:root</span>{<br>
+&nbsp;&nbsp;<span class="v">--accent</span>: <span class="s">#5cc8ff</span>;&nbsp;&nbsp;<span class="c">/* голубой */</span><br>
+&nbsp;&nbsp;<span class="v">--accent-2</span>: <span class="s">#7b6cff</span>;&nbsp;<span class="c">/* сиреневый */</span><br>
+&nbsp;&nbsp;<span class="v">--bg-0</span>: <span class="s">#04050a</span>;<br>
+}
+      </div>
+    </div>
+    <div class="col">
+      <div class="code">
+<span class="c">/* os.js — так рождается программа */</span><br>
+<span class="k">WM</span>.<span class="v">register</span>({<br>
+&nbsp;&nbsp;id: <span class="s">'terminal'</span>, title: <span class="s">'Терминал'</span>,<br>
+&nbsp;&nbsp;<span class="v">init</span>(rec){ <span class="c">/* окно и команды */</span> }<br>
+});
+      </div>
+    </div>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    Работа шла в пять этапов. Сначала каркас — разметка экранов и окон. Потом внешний вид: стекло, свечение, тёмная и светлая темы. Затем логика: чтобы окна двигались, открывались папки и файлы. Потом сами программы — шестнадцать приложений и пять игр. И в конце проверка: я снимала экраны и считала, хорошо ли читается текст. Вот кусочек кода: слева — цвета системы, справа — как рождается программа.</aside>
+</section>
+
+<!-- ══════════════ 4. ВКЛЮЧЕНИЕ И ВХОД ══════════════ -->
+<section class="slide" data-t="Включение и вход">
+  <div class="kicker">Запуск</div>
+  <h2>Как <em>включается</em> система</h2>
+  <p class="lede" style="margin-bottom:16px">Три шага — как у настоящего компьютера. Кнопки «Пропустить» здесь нет:
+    запуск идёт по-честному.</p>
+  <div class="row3">
+    <figure>
+      <div class="shot"><img src="img/01-poweron.png" alt="Системный блок с кнопкой питания"></div>
+      <div class="cap">1. Нажимаем кнопку питания</div>
+    </figure>
+    <figure>
+      <div class="shot"><img src="img/02-boot.png" alt="Экран загрузки Люмен OS"></div>
+      <div class="cap">2. Экран загрузки системы</div>
+    </figure>
+    <figure>
+      <div class="shot"><img src="img/03-login.png" alt="Экран входа: имя и пароль"></div>
+      <div class="cap">3. Вход: имя и пароль</div>
+    </figure>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    Система включается как настоящий компьютер. Сначала появляется системный блок с кнопкой питания — я специально не сделала кнопку «Пропустить», чтобы запуск был честным. Дальше идёт экран загрузки с названием системы. И потом вход: нужно ввести имя пользователя и пароль. У меня это имя Степан.</aside>
+</section>
+
+<!-- ══════════════ 5. ВНУТРИ СИСТЕМЫ ══════════════ -->
+<section class="slide" data-t="Внутри системы">
+  <div class="kicker">Внутри системы</div>
+  <h2>Рабочий стол <em>и окна</em></h2>
+  <div class="split" style="margin-top:10px;align-items:start">
+    <div class="col">
+      <figure>
+        <div class="shot hero"><img src="img/04-desktop.png" alt="Рабочий стол"></div>
+        <div class="cap">Рабочий стол, панель задач и часы</div>
+      </figure>
+    </div>
+    <div class="col">
+      <figure>
+        <div class="shot"><img src="img/12-multi.png" alt="Несколько окон открыто одновременно"></div>
+        <div class="cap">Несколько окон работают одновременно</div>
+      </figure>
+      <div class="cards" style="margin-top:14px">
+        <div class="card"><b>Окна как настоящие</b><p>Двигаются, сворачиваются, растягиваются и прилипают к краям экрана.</p></div>
+        <div class="card"><b>Две темы</b><p>Тёмная — для вечера, светлая — для дня. Переключаются одной кнопкой.</p></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    Так выглядит рабочий стол. Окна здесь ведут себя как настоящие: их можно двигать, сворачивать, растягивать, и они прилипают к краям экрана. Можно открыть сразу несколько программ — вот Проводник и Терминал рядом. Ещё система умеет переключаться между тёмной и светлой темой: на снимках светлая, потому что днём она читается лучше.</aside>
+</section>
+
+<!-- ══════════════ 6. ПРОГРАММЫ И ЗАЩИТА ══════════════ -->
+<section class="slide" data-t="Программы">
+  <div class="kicker">Программы и защита</div>
+  <h2>Что <em>умеет</em> система</h2>
+  <div class="row4" style="margin-top:14px">
+    <figure>
+      <div class="shot"><img src="img/06-explorer.png" alt="Проводник с папками"></div>
+      <div class="cap">Проводник</div>
+    </figure>
+    <figure>
+      <div class="shot"><img src="img/05-terminal.png" alt="Терминал с командами"></div>
+      <div class="cap">Терминал</div>
+    </figure>
+    <figure>
+      <div class="shot"><img src="img/07-music.png" alt="Приложение Музыка"></div>
+      <div class="cap">Музыка</div>
+    </figure>
+    <figure>
+      <div class="shot"><img src="img/10-admin-open.png" alt="Панель администратора"></div>
+      <div class="cap">Панель администратора</div>
+    </figure>
+  </div>
+  <div class="split" style="margin-top:16px;align-items:start">
+    <div class="col">
+      <p class="lede" style="font-size:14px">16 приложений: проводник, терминал, блокнот, калькулятор, музыка,
+        календарь, почта, браузер, галерея, редактор рисунков, игры, диспетчер задач, защита, магазин и параметры.
+        Ещё пять игр: «Змейка», «Тетрис», «Понг», «Арканоид» и «2048».</p>
+    </div>
+    <div class="col">
+      <div class="card"><b>Защита сделана всерьёз</b>
+        <p>Пароль не хранится открытым текстом — от него остаётся только отпечаток.
+           Панель администратора открывается отдельным кодом владельца.</p></div>
+    </div>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    Внутри шестнадцать приложений. Проводник работает с папками и файлами, терминал понимает команды, есть музыка, календарь, почта, браузер, галерея, редактор рисунков, игры и диспетчер задач. Отдельно я сделала защиту. Пароль нигде не хранится открытым текстом: от него остаётся только отпечаток, по которому нельзя восстановить сам пароль. А панель администратора открывается отдельным кодом владельца — чужой туда не попадёт.</aside>
+</section>
+
+<!-- ══════════════ 7. ИТОГИ, QR И ОПРОС ══════════════ -->
+<section class="slide" data-t="Итоги и опрос">
+  <div class="kicker">Итоги</div>
+  <h2>Что <em>получилось</em></h2>
+  <div class="stats">
+    <div class="stat"><b>16</b><span>приложений</span></div>
+    <div class="stat"><b>5</b><span>игр</span></div>
+    <div class="stat"><b>2</b><span>темы оформления</span></div>
+    <div class="stat"><b>6200</b><span>строк кода</span></div>
+  </div>
+  <div class="split" style="align-items:start">
+    <div class="col">
+      <div class="poll">
+        <h4>Опрос для Одноклассников</h4>
+        <ul>
+          <li><i></i>Да, интересно — хочу попробовать</li>
+          <li><i></i>Нет, обычная Windows удобнее</li>
+          <li><i></i>Затрудняюсь ответить</li>
+          <li><i></i>Хочу узнать, как её сделать</li>
+        </ul>
+      </div>
+      <p class="small" style="margin-top:12px">Вопрос: «Нужна ли, по-вашему, такая компьютерная система?»</p>
+    </div>
+    <div class="col qr">
+      <img src="qr-lumen.png" alt="QR-код на систему Люмен">
+      <span>Наведите камеру телефона —<br>и система откроется у вас</span>
+    </div>
+  </div>
+  <aside class="notes"><b>Что сказать</b>
+    В итоге получилась система из шестнадцати приложений и пяти игр, две темы оформления и примерно шесть тысяч строк кода. Ссылку можно открыть с телефона — вот код, наведите камеру. И в конце я хочу задать вам вопрос: как вы думаете, нужна ли такая система? Голосование я провожу в Одноклассниках, варианты ответов на слайде. Спасибо за внимание!</aside>
+</section>
+
+</div>
+
+<div class="hud">
+  <button id="prev" title="Назад">‹</button>
+  <span class="count" id="count">1 / 7</span>
+  <button id="next" title="Вперёд">›</button>
+</div>
+<div class="hint">← → перелистывать · N заметки · F во весь экран</div>
+
+<script>
+(function(){
+  const slides = [...document.querySelectorAll('.slide')];
+  const dots = document.getElementById('dots');
+  const bar = document.getElementById('bar');
+  const count = document.getElementById('count');
+  const stage = document.getElementById('stage');
+  let cur = 0;
+
+  slides.forEach((s, i) => {
+    const d = document.createElement('i');
+    d.title = s.dataset.t || ('Слайд ' + (i + 1));
+    d.onclick = () => go(i);
+    dots.appendChild(d);
+  });
+
+  function go(i){
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('on', k === cur));
+    [...dots.children].forEach((d, k) => d.classList.toggle('on', k === cur));
+    count.textContent = (cur + 1) + ' / ' + slides.length;
+    bar.style.width = ((cur + 1) / slides.length * 100) + '%';
+    location.hash = 's' + (cur + 1);
+  }
+
+  function fit(){
+    const pad = 34;
+    const s = Math.min((innerWidth - pad) / 1280, (innerHeight - pad * 2.2) / 720);
+    stage.style.transform = 'scale(' + s + ')';
+  }
+
+  document.getElementById('prev').onclick = () => go(cur - 1);
+  document.getElementById('next').onclick = () => go(cur + 1);
+
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(cur - 1); }
+    if (e.key === 'Home') go(0);
+    if (e.key === 'End') go(slides.length - 1);
+    if (e.key === 'n' || e.key === 'N' || e.key === 'т' || e.key === 'Т') document.body.classList.toggle('notes-on');
+    if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') {
+      document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+    }
+  });
+  addEventListener('resize', fit);
+  document.addEventListener('click', e => {
+    if (e.target.closest('.hud,.dots,.notes,a,button')) return;
+    go(e.clientX < innerWidth * 0.3 ? cur - 1 : cur + 1);
+  });
+
+  fit();
+  const m = location.hash.match(/^#s(\d+)$/);
+  go(m ? +m[1] - 1 : 0);
+
+  // Наружу — чтобы слайдами можно было управлять извне (пульт, проверка).
+  window.go = go;
+  window.slides = slides;
+})();
+</script>
+</body>
+</html>
