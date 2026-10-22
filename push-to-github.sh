@@ -115,6 +115,9 @@ fi
 echo
 echo "Готово. Осталось включить сайт:"
 echo "  1. Откройте https://github.com/${REPO}/settings/pages"
-echo "  2. В разделе «Build and deployment» выберите Source: «GitHub Actions»."
-echo "  3. Через минуту сайт появится по адресу"
+echo "  2. В разделе «Build and deployment» выберите Source: «Deploy from a branch»."
+echo "  3. Branch: main, папка: / (root). Нажмите Save."
+echo "  4. Через минуту сайт появится по адресу"
 echo "     https://stepankazacuk-png.github.io/win12_lumen/"
+echo
+echo "  Сборка через «GitHub Actions» не подойдёт: файла сборки в проекте нет."
