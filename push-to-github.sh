@@ -22,17 +22,34 @@ fi
 
 cd "$DIR" || exit 1
 
-# Заранее проверяем право на запись файлов: у fine-grained токена раздел
-# «Contents» по умолчанию только на чтение, и тогда push падает с невнятным
-# 403. Лучше сказать прямо, чего не хватает.
-CAN_WRITE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO}/contents/.push-probe" \
-  -d '{"message":"probe","content":"cHJvYmU="}')"
+echo "Заливаю в $REPO, ветка $BRANCH..."
 
-if [ "$CAN_WRITE" = "403" ] || [ "$CAN_WRITE" = "404" ]; then
-  cat <<'TXT'
+# Токен передаём на один вызов, в конфиг git не пишем.
+PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
+
+# Права проверяем самой отправкой, а не пробной записью через API: пробная
+# запись создаёт коммит в той же ветке, ветка уходит вперёд, и следующая
+# отправка отклоняется как неактуальная.
+PUSH_ERR="$(mktemp)"
+FAILED=0
+if [ "${FORCE:-0}" = "1" ]; then
+  # История была переписана (убраны коды и пароли), поэтому обычная отправка
+  # не пройдёт: старые коммиты в родстве с новыми не состоят. Перезаписываем.
+  echo "Внимание: перезаписываю историю ветки $BRANCH (FORCE=1)."
+  git push --force "$PUSH_URL" "HEAD:refs/heads/${BRANCH}" 2>"$PUSH_ERR" || FAILED=1
+else
+  git push "$PUSH_URL" "HEAD:refs/heads/${BRANCH}" 2>"$PUSH_ERR" || FAILED=1
+fi
+ERR_TEXT="$(cat "$PUSH_ERR")"
+rm -f "$PUSH_ERR"
+ERR_TEXT="${ERR_TEXT//${GITHUB_TOKEN}/<скрыто>}"
+
+if [ "$FAILED" = "1" ]; then
+  printf '%s\n' "$ERR_TEXT"
+  echo
+  case "$ERR_TEXT" in
+    *403*|*Permission*|*denied*|*"not authorized"*|*"Authentication failed"*)
+      cat <<'TXT'
 Токен принят, но права на запись нет.
 
 У fine-grained токена права раздаются по разделам. Включите:
@@ -43,35 +60,13 @@ if [ "$CAN_WRITE" = "403" ] || [ "$CAN_WRITE" = "404" ]; then
 Проще всего выпустить классический токен с одним правом «repo»:
 https://github.com/settings/tokens/new?scopes=repo
 TXT
+      ;;
+    *)
+      echo "Отправка отклонена. Если история была переписана, запустите с FORCE=1:"
+      echo "    GITHUB_TOKEN=ваш_токен FORCE=1 $0"
+      ;;
+  esac
   exit 1
-fi
-
-# Пробная запись удалась — убираем след, чтобы он не попал в репозиторий.
-PROBE_SHA="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  "https://api.github.com/repos/${REPO}/contents/.push-probe" \
-  | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sha",""))' 2>/dev/null)"
-[ -n "$PROBE_SHA" ] && curl -s -o /dev/null -X DELETE \
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  "https://api.github.com/repos/${REPO}/contents/.push-probe" \
-  -d "{\"message\":\"cleanup\",\"sha\":\"${PROBE_SHA}\"}"
-
-echo "Заливаю в $REPO, ветка $BRANCH..."
-
-# Токен передаём на один вызов, в конфиг git не пишем.
-PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
-
-if [ "${FORCE:-0}" = "1" ]; then
-  # История была переписана (убраны коды и пароли), поэтому обычная отправка
-  # не пройдёт: старые коммиты в родстве с новыми не состоят. Перезаписываем.
-  echo "Внимание: перезаписываю историю ветки $BRANCH (FORCE=1)."
-  git push --force "$PUSH_URL" "HEAD:refs/heads/${BRANCH}" || exit 1
-else
-  git push "$PUSH_URL" "HEAD:refs/heads/${BRANCH}" || {
-    echo
-    echo "Отправка отклонена. Если история была переписана, запустите с FORCE=1:"
-    echo "    GITHUB_TOKEN=ваш_токен FORCE=1 $0"
-    exit 1
-  }
 fi
 
 # Старый релиз хранит архив с прежними исходниками, где были коды. Удаляем
