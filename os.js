@@ -502,6 +502,23 @@ const VFS = (() => {
   const norm = p => 'C:' + (split(p).length ? '\\' + split(p).join('\\') : '\\');
   const parentOf = p => split(p).slice(0, -1);
   const nameOf = p => split(p).slice(-1)[0] || '';
+  function saveUserVfs() {
+    try {
+      const u = node('C:\\Users\\' + USER);
+      if (u && u.children) localStorage.setItem('lumen.vfs.' + USER, JSON.stringify(u.children));
+    } catch (e) {}
+  }
+  function loadUserVfs() {
+    try {
+      const raw = localStorage.getItem('lumen.vfs.' + USER);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      const u = node('C:\\Users\\' + USER);
+      if (u && data && typeof data === 'object') {
+        Object.keys(data).forEach(k => { u.children[k] = data[k]; });
+      }
+    } catch (e) {}
+  }
   function mkdir(p) {
     const parts = split(p); if (!parts.length) return { ok: false, err: 'Указан неверный путь' };
     let cur = root();
@@ -510,6 +527,7 @@ const VFS = (() => {
       else cur.children[part] = { type: 'dir', children: {} };
       cur = cur.children[part];
     }
+    if (p.includes('Users') || p.includes(USER)) saveUserVfs();
     return { ok: true };
   }
   function write(p, content, ext) {
@@ -519,6 +537,7 @@ const VFS = (() => {
     if (parent.children[nm] && parent.children[nm].type === 'dir') return { ok: false, err: 'Это каталог' };
     const e = ext || (nm.includes('.') ? nm.split('.').pop() : 'txt');
     parent.children[nm] = { type: 'file', ext: e, content: String(content) };
+    if (p.includes('Users') || p.includes(USER)) saveUserVfs();
     return { ok: true };
   }
   function read(p) {
@@ -534,6 +553,7 @@ const VFS = (() => {
     if (!parent || !parent.children[nm]) return { ok: false, err: 'Не найдено' };
     if (parent.children[nm].type === 'dir' && !rec) return { ok: false, err: 'Требуется ключ /r' };
     delete parent.children[nm];
+    if (p.includes('Users') || p.includes(USER)) saveUserVfs();
     return { ok: true };
   }
   function cp(from, to) {
@@ -544,7 +564,9 @@ const VFS = (() => {
     const n = node(from); if (!n) return { ok: false, err: 'Источник не найден' };
     if (n.type === 'dir') return { ok: false, err: 'Перемещение каталогов не поддерживается' };
     const w = cp(from, to); if (!w.ok) return w;
-    rm(from); return { ok: true };
+    rm(from);
+    if (from.includes('Users') || to.includes('Users')) saveUserVfs();
+    return { ok: true };
   }
   function list(p) {
     const n = node(p);
@@ -565,9 +587,10 @@ const VFS = (() => {
     const snap = JSON.parse(JSON.stringify(pristine));
     Object.keys(tree).forEach(k => delete tree[k]);
     Object.keys(snap).forEach(k => { tree[k] = snap[k]; });
+    try { localStorage.removeItem('lumen.vfs.' + USER); } catch (e) {}
     return { ok: true };
   }
-  return { tree, root, node, norm, split, mkdir, write, read, rm, mv, cp, list, sizeOf, allFiles, nameOf, parentOf, restore };
+  return { tree, root, node, norm, split, mkdir, write, read, rm, mv, cp, list, sizeOf, allFiles, nameOf, parentOf, restore, saveUserVfs, loadUserVfs };
 })();
 
 /* ============================================================================
@@ -587,6 +610,85 @@ const Notify = (() => {
     while (host.children.length > 5) host.lastChild.remove();
   };
 })();
+
+/* ============================================================================
+   ИНТЕГРАЦИЯ С РЕАЛЬНЫМ ПК: ЭКСПОРТ И ИМПОРТ ФАЙЛОВ
+   ========================================================================== */
+function exportVfsFile(path) {
+  const n = VFS.node(path);
+  if (!n) { Sound.error(); Notify('Экспорт', 'Файл не найден: ' + path, ICO.folder); return; }
+  if (n.type === 'dir') { Sound.error(); Notify('Экспорт', 'Экспорт папок пока не поддерживается', ICO.folder); return; }
+  const nm = VFS.nameOf(path) || 'file.txt';
+  let blob;
+  if (n.content && n.content.startsWith('data:')) {
+    try {
+      const parts = n.content.split(',');
+      const mime = parts[0].match(/:(.*?);/)[1];
+      const bstr = atob(parts[1]);
+      let nBytes = bstr.length;
+      const u8arr = new Uint8Array(nBytes);
+      while (nBytes--) u8arr[nBytes] = bstr.charCodeAt(nBytes);
+      blob = new Blob([u8arr], { type: mime });
+    } catch (e) {
+      blob = new Blob([n.content], { type: 'text/plain;charset=utf-8' });
+    }
+  } else {
+    blob = new Blob([n.content || ''], { type: 'text/plain;charset=utf-8' });
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nm;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  Sound.notif();
+  Notify('Экспорт', 'Файл «' + nm + '» скачан на ваш ПК', ICO.folder, true);
+}
+
+function importDroppedFiles(files, targetDir, onDone) {
+  if (!files || !files.length) return;
+  let remaining = files.length;
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    const isText = /^(text\/|application\/(json|javascript|xml|x-javascript))/i.test(file.type) ||
+                   /\.(txt|md|json|js|html|css|py|sh|bat|csv|xml|log|ini|cfg)$/i.test(file.name);
+    const finish = content => {
+      const p = targetDir + '\\' + file.name;
+      const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'txt';
+      VFS.write(p, content, ext);
+      if (typeof DESK_DIR !== 'undefined' && targetDir === DESK_DIR && !deskItems.some(x => x.name === file.name)) {
+        deskItems.push({ type: 'file', name: file.name, ext });
+        saveDeskItems();
+      }
+      remaining--;
+      if (remaining === 0) {
+        Sound.notif();
+        Notify('Импорт', 'Импортировано файлов: ' + files.length, ICO.folder, true);
+        if (typeof onDone === 'function') onDone();
+        if (typeof renderIcons === 'function') renderIcons();
+      }
+    };
+    if (isText) {
+      reader.onload = () => finish(reader.result);
+      reader.readAsText(file);
+    } else {
+      reader.onload = () => finish(reader.result);
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
+function triggerPcUpload(targetDir, onDone) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true; inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = () => {
+    if (inp.files && inp.files.length) {
+      importDroppedFiles(inp.files, targetDir, onDone);
+    }
+    document.body.removeChild(inp);
+  };
+  inp.click();
+}
 
 /* ============================================================================
    МЕНЕДЖЕР ОКОН (ПЛЕКСУС)
@@ -864,7 +966,120 @@ const WM = (() => {
     });
   }
 
-  return { register, open, close, focus, minimize, toggleMin, unminimize, toggleMax, tile, minimizeAll, applyRect, relayout };
+  function fileDialog({ title = 'Выбор файла', mode = 'open', startPath = HOME + '\\Документы', ext = '', onSelect } = {}) {
+    let curPath = (typeof VFS !== 'undefined' && VFS.node(startPath)) ? startPath : HOME;
+    let selectedFile = '';
+    const desk = $('#desk') || document.body;
+    const overlay = el('div', 'dlg-overlay');
+    const card = el('div', 'dlg-card');
+
+    function renderDialog() {
+      const res = VFS.list(curPath);
+      const dirs = res.items.filter(i => i.node.type === 'dir').sort((a, b) => a.name.localeCompare(b.name));
+      const fls = res.items.filter(i => i.node.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+
+      let crumbsHtml = '<button data-nav="root">C:\\</button>';
+      let acc = '';
+      VFS.split(curPath).forEach(pt => {
+        acc += '\\' + pt;
+        const full = 'C:' + acc;
+        crumbsHtml += '<span>›</span><button data-nav="p" data-path="' + esc(full) + '">' + esc(pt) + '</button>';
+      });
+
+      let listHtml = '';
+      if (curPath !== 'C:\\') {
+        listHtml += '<div class="dlg-item" data-action="up">' + ICO.folder + '<span>.. (наверх)</span></div>';
+      }
+      dirs.forEach(d => {
+        listHtml += '<div class="dlg-item" data-type="dir" data-name="' + esc(d.name) + '">' + ICO.folder + '<span>' + esc(d.name) + '</span></div>';
+      });
+      fls.forEach(f => {
+        const ico = f.node.ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(f.node.ext) ? ICO.png : ICO.file);
+        const isSel = selectedFile === f.name ? ' sel' : '';
+        listHtml += '<div class="dlg-item' + isSel + '" data-type="file" data-name="' + esc(f.name) + '">' + ico + '<span>' + esc(f.name) + '</span></div>';
+      });
+      if (!dirs.length && !fls.length) {
+        listHtml = '<div style="padding:24px;text-align:center;color:var(--txt-dim);font-size:12px">Папка пуста</div>';
+      }
+
+      card.innerHTML =
+        '<div class="dlg-head">' +
+          '<h4>' + esc(title) + '</h4>' +
+          '<button class="icon-btn dlg-close" title="Закрыть">' + ICO.close + '</button>' +
+        '</div>' +
+        '<div class="dlg-crumbs">' + crumbsHtml + '</div>' +
+        '<div class="dlg-list">' + listHtml + '</div>' +
+        '<input class="dlg-inp" placeholder="' + (mode === 'save' ? 'Имя файла' : 'Выберите файл') + '" value="' + esc(selectedFile) + '">' +
+        '<div class="dlg-actions">' +
+          '<button class="btn dlg-cancel">Отмена</button>' +
+          '<button class="btn primary dlg-ok">' + (mode === 'save' ? 'Сохранить' : 'Открыть') + '</button>' +
+        '</div>';
+
+      const inp = $('.dlg-inp', card);
+      inp.oninput = () => { selectedFile = inp.value.trim(); };
+      inp.onkeydown = e => { if (e.key === 'Enter') confirmSelect(); };
+
+      $('.dlg-close', card).onclick = () => closeDlg();
+      $('.dlg-cancel', card).onclick = () => closeDlg();
+      $('.dlg-ok', card).onclick = () => confirmSelect();
+
+      $('.dlg-crumbs', card).onclick = e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.nav === 'root') { curPath = 'C:\\'; selectedFile = ''; renderDialog(); }
+        else if (b.dataset.path) { curPath = b.dataset.path; selectedFile = ''; renderDialog(); }
+      };
+
+      $('.dlg-list', card).onclick = e => {
+        const it = e.target.closest('.dlg-item');
+        if (!it) return;
+        if (it.dataset.action === 'up') {
+          const parent = VFS.parentOf(curPath);
+          curPath = parent.length ? 'C:\\' + parent.join('\\') : 'C:\\';
+          selectedFile = ''; renderDialog();
+        } else if (it.dataset.type === 'dir') {
+          curPath = curPath.replace(/\\$/, '') + '\\' + it.dataset.name;
+          selectedFile = ''; renderDialog();
+        } else if (it.dataset.type === 'file') {
+          selectedFile = it.dataset.name;
+          inp.value = selectedFile;
+          $$('.dlg-item', card).forEach(x => x.classList.remove('sel'));
+          it.classList.add('sel');
+        }
+      };
+
+      $('.dlg-list', card).ondblclick = e => {
+        const it = e.target.closest('.dlg-item');
+        if (it && it.dataset.type === 'file') {
+          selectedFile = it.dataset.name;
+          confirmSelect();
+        }
+      };
+    }
+
+    function confirmSelect() {
+      const fn = selectedFile || ($('.dlg-inp', card) ? $('.dlg-inp', card).value.trim() : '');
+      if (!fn) { Sound.error(); return; }
+      const full = curPath.replace(/\\$/, '') + '\\' + fn;
+      if (mode === 'open' && !VFS.node(full)) {
+        Sound.error();
+        Notify('Файлы', 'Файл «' + fn + '» не найден', ICO.folder);
+        return;
+      }
+      closeDlg();
+      if (typeof onSelect === 'function') onSelect(full);
+    }
+
+    function closeDlg() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+
+    overlay.appendChild(card);
+    renderDialog();
+    desk.appendChild(overlay);
+  }
+
+  return { register, open, close, focus, minimize, toggleMin, unminimize, toggleMax, tile, minimizeAll, applyRect, relayout, fileDialog };
 })();
 
 /* ============================================================================
@@ -906,6 +1121,7 @@ WM.register({
         <button class="btn" data-nav="home">Домой</button>
         <div class="crumbs"></div>
         <button class="btn" data-nav="new">${ICO.plus} Папка</button>
+        <button class="btn" data-nav="import">${ICO.plus} С компьютера</button>
       </div>
       <div style="display:flex;flex:1;min-height:0">
         <div class="app-side"></div>
@@ -926,6 +1142,15 @@ WM.register({
     ];
     side.innerHTML = QUICK.map(q => `<button class="side-i" data-p="${esc(q.p)}">${ICO.folder}<span>${esc(q.t)}</span></button>`).join('');
     side.onclick = e => { const b = e.target.closest('.side-i'); if (b) go(b.dataset.p); };
+
+    // Drag-and-drop файлов с реального компьютера в текущую папку
+    files.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+    files.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        importDroppedFiles(e.dataTransfer.files, st.path, render);
+      }
+    });
 
     function go(p, push) {
       if (!VFS.node(p)) { Notify('Проводник', 'Путь недоступен: ' + p, ICO.folder); Sound.error(); return; }
@@ -965,6 +1190,7 @@ WM.register({
               { t: 'Открыть', i: ICO.exe, f: () => isDir ? go(full) : openFile(item.name, item.node) },
               { t: 'Переименовать', i: ICO.ren, f: () => { const nn = prompt('Новое имя:', item.name); if (nn && nn !== item.name) { VFS.mv(full, st.path + '\\' + nn); render(); } } },
               { t: 'Копировать', i: ICO.copy, f: () => { rec.api.clip = full; Notify('Проводник', 'Скопировано: ' + item.name, ICO.copy, true); } },
+              (!isDir ? { t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(full) } : null),
               { sep: true },
               { t: 'Удалить', i: ICO.trash, f: () => { const res = VFS.rm(full, true); if (!res.ok) { Sound.error(); Notify('Ошибка', res.err, ICO.trash); } render(); } },
             ]);
@@ -977,8 +1203,8 @@ WM.register({
     function openFile(name, node) {
       const full = st.path + '\\' + name;
       const ext = node.ext;
-      if (ext === 'png') WM.open('photos');
-      else if (ext === 'wav') WM.open('music');
+      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) WM.open('viewer', { path: full, name });
+      else if (['wav', 'mp3', 'ogg'].includes(ext)) WM.open('music', { path: full, name });
       else if (ext === 'game') { Sound.open(); WM.open('games', String(node.content || '').replace(/\.exe$/i, '')); }
       else if (ext === 'exe' || ext === 'sys') { Sound.error(); Notify('Система', '«' + name + '» — системный файл, запуск заблокирован.', ICO.shield); }
       else WM.open('notepad', { path: full });
@@ -990,6 +1216,7 @@ WM.register({
       if (n === 'back') { const p = hist.pop(); if (p) go(p, false); }
       if (n === 'home') go(HOME);
       if (n === 'new') { const nm = prompt('Имя новой папки:', 'Новая папка'); if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); } }
+      if (n === 'import') triggerPcUpload(st.path, render);
     };
     files.oncontextmenu = e => {
       if (e.target.closest('.fitem')) return;
@@ -997,6 +1224,7 @@ WM.register({
       openCtx(e.clientX, e.clientY, [
         { t: 'Создать папку', i: ICO.plus, f: () => { const nm = prompt('Имя папки:', 'Новая папка'); if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); } } },
         { t: 'Создать текстовый файл', i: ICO.note, f: () => { const nm = prompt('Имя файла:', 'новый.txt'); if (nm) { VFS.write(st.path + '\\' + nm, ''); render(); } } },
+        { t: 'Загрузить с ПК...', i: ICO.folder, f: () => triggerPcUpload(st.path, render) },
         { t: 'Вставить', i: ICO.copy, f: () => { if (rec.api.clip) { VFS.cp(rec.api.clip, st.path + '\\' + VFS.nameOf(rec.api.clip)); render(); } } },
         { sep: true },
         { t: 'Обновить', i: ICO.refresh, f: render },
@@ -1018,8 +1246,10 @@ WM.register({
     rec.body.innerHTML = `<div class="app">
       <div class="app-bar">
         <button class="btn primary" data-a="save">${ICO.note} Сохранить</button>
+        <button class="btn" data-a="saveas">Как...</button>
         <button class="btn" data-a="new">${ICO.plus} Новый</button>
         <button class="btn" data-a="open">${ICO.folder} Открыть</button>
+        <button class="btn" data-a="export">Скачать на ПК</button>
         <span style="flex:1"></span>
         <button class="btn" data-a="wrap">Перенос</button>
         <button class="btn" data-a="font">A±</button>
@@ -1046,11 +1276,29 @@ WM.register({
         VFS.write(st.path, ta.value); rec.dirty = false; upd(); Sound.click();
         Notify('Блокнот', 'Сохранено: ' + VFS.nameOf(st.path), ICO.note, true);
       }
+      if (a === 'saveas') {
+        WM.fileDialog({
+          title: 'Сохранить как', mode: 'save', startPath: VFS.parentOf(st.path).join('\\') || HOME + '\\Документы',
+          onSelect(p) {
+            st.path = p; VFS.write(p, ta.value); rec.dirty = false; upd(); Sound.click();
+            Notify('Блокнот', 'Сохранено: ' + VFS.nameOf(p), ICO.note, true);
+          }
+        });
+      }
       if (a === 'new') { st.path = HOME + '\\Документы\\без_имени.txt'; ta.value = ''; rec.dirty = false; upd(); }
       if (a === 'open') {
-        const p = prompt('Путь к файлу:', st.path);
-        if (p && VFS.node(p)) { const r = VFS.read(p); st.path = p; ta.value = r.content; rec.dirty = false; upd(); }
-        else if (p) { Sound.error(); Notify('Блокнот', 'Файл не найден: ' + p, ICO.note); }
+        WM.fileDialog({
+          title: 'Открыть текстовый файл', mode: 'open', startPath: VFS.parentOf(st.path).join('\\') || HOME + '\\Документы',
+          onSelect(p) {
+            const r = VFS.read(p);
+            if (r.ok) { st.path = p; ta.value = r.content; rec.dirty = false; upd(); }
+            else { Sound.error(); Notify('Блокнот', 'Ошибка чтения файла', ICO.note); }
+          }
+        });
+      }
+      if (a === 'export') {
+        VFS.write(st.path, ta.value); rec.dirty = false; upd();
+        exportVfsFile(st.path);
       }
       if (a === 'wrap') ta.style.whiteSpace = ta.style.whiteSpace === 'pre' ? 'pre-wrap' : 'pre';
       if (a === 'font') { const fs = parseInt(getComputedStyle(ta).fontSize); ta.style.fontSize = (fs >= 20 ? 12 : fs + 1) + 'px'; }
@@ -1410,9 +1658,18 @@ function applyTheme(t) {
 }
 function applyWall(w) {
   State.wallpaper = w;
-  $('#wall').dataset.wp = w;
-  $('.lock-bg').dataset.wp = w;
-  $$('#wpChips .chip').forEach(c => c.classList.toggle('on', c.dataset.w === w));
+  const wallEl = $('#wall');
+  if (w && (w.startsWith('data:') || w.startsWith('url('))) {
+    wallEl.style.backgroundImage = w.startsWith('url(') ? w : `url(${w})`;
+    wallEl.style.backgroundSize = 'cover';
+    wallEl.style.backgroundPosition = 'center';
+    wallEl.dataset.wp = 'custom';
+  } else {
+    wallEl.style.backgroundImage = '';
+    wallEl.dataset.wp = w;
+    const lockBg = $('.lock-bg'); if (lockBg) lockBg.dataset.wp = w;
+    $$('#wpChips .chip').forEach(c => c.classList.toggle('on', c.dataset.w === w));
+  }
   save('w12.wall', w);
 }
 function applyTransparency(on) {
@@ -1609,17 +1866,46 @@ const PHOTOS = ['Аврора над хребтом', 'Туманность Ор
 WM.register({
   id: 'photos', title: 'Фотографии', icon: ICO.photos, w: 840, h: 560,
   init(rec) {
+    const uList = (typeof VFS !== 'undefined') ? VFS.list(HOME + '\\Изображения').items.filter(it => it.node && it.node.type === 'file' && it.node.content) : [];
+    let userHtml = '';
+    if (uList.length) {
+      userHtml = '<div style="margin-bottom:16px"><h4 style="margin:0 0 10px;font-size:13px;color:var(--txt-dim)">Мои изображения (' + uList.length + ')</h4><div class="gal">' +
+        uList.map(it => {
+          const isImg = it.node.content && it.node.content.startsWith('data:image');
+          const thumb = isImg
+            ? '<img src="' + esc(it.node.content) + '" style="width:100%;height:100%;object-fit:cover">'
+            : '<div class="art" style="background:#111;display:grid;place-items:center">' + ICO.photos + '</div>';
+          return '<figure data-user-file="' + esc(it.name) + '"><div class="art" style="overflow:hidden">' + thumb + '</div><figcaption>' + esc(it.name) + '</figcaption></figure>';
+        }).join('') + '</div></div>';
+    }
     rec.body.innerHTML = '<div class="app">' +
-      '<div class="app-bar"><b style="font-size:12.5px">Коллекция «Обои Люмен»</b><span style="flex:1"></span>' +
-      '<span style="font-size:11.5px;color:var(--txt-dim)">' + PHOTOS.length + ' изображений</span></div>' +
-      '<div class="app-main"><div class="gal">' + PHOTOS.map((n, i) =>
+      '<div class="app-bar"><b style="font-size:12.5px">Галерея</b><span style="flex:1"></span>' +
+      '<button class="btn" data-a="paint">' + ICO.paint + ' Рисовать</button>' +
+      '<button class="btn" data-a="import">' + ICO.plus + ' Загрузить с ПК</button></div>' +
+      '<div class="app-main" style="padding:16px">' +
+      userHtml +
+      '<h4 style="margin:0 0 10px;font-size:13px;color:var(--txt-dim)">Коллекция «Обои Люмен»</h4>' +
+      '<div class="gal">' + PHOTOS.map((n, i) =>
         '<figure data-i="' + i + '"><div class="art" style="' + ART(i) + '"></div><figcaption>' + esc(n) + '</figcaption></figure>').join('') +
       '</div></div></div>';
-    $('.gal', rec.body).onclick = e => {
-      const f = e.target.closest('figure'); if (!f) return;
-      Sound.click();
-      const i = +f.dataset.i;
-      WM.open('viewer', { i, name: PHOTOS[i] });
+    $('.app-bar', rec.body).onclick = e => {
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      if (b.dataset.a === 'paint') WM.open('paint');
+      if (b.dataset.a === 'import') triggerPcUpload(HOME + '\\Изображения', () => WM.open('photos'));
+    };
+    $('.app-main', rec.body).onclick = e => {
+      const uf = e.target.closest('[data-user-file]');
+      if (uf) {
+        Sound.click();
+        WM.open('viewer', { path: HOME + '\\Изображения\\' + uf.dataset.userFile });
+        return;
+      }
+      const f = e.target.closest('figure[data-i]');
+      if (f) {
+        Sound.click();
+        const i = +f.dataset.i;
+        WM.open('viewer', { i, name: PHOTOS[i] });
+      }
     };
   }
 });
@@ -1627,15 +1913,51 @@ WM.register({
 WM.register({
   id: 'viewer', title: 'Просмотр', icon: ICO.photos, w: 800, h: 580, multi: true,
   init(rec, arg) {
+    const isFile = arg && arg.path;
+    let imgData = null, title = (arg && arg.name) || 'Изображение';
+    if (isFile) {
+      const n = VFS.node(arg.path);
+      imgData = n ? n.content : null;
+      title = VFS.nameOf(arg.path);
+    } else if (arg && arg.src) {
+      imgData = arg.src;
+    }
+    const hasData = imgData && (imgData.startsWith('data:') || imgData.startsWith('http') || imgData.startsWith('blob:'));
+    const artStyle = (!hasData && typeof arg.i === 'number') ? ART(arg.i) : '';
+
     rec.body.innerHTML = '<div class="app" style="background:#05060c">' +
-      '<div class="app-bar"><b style="font-size:12.5px">' + esc(arg.name) + '</b><span style="flex:1"></span>' +
-      '<button class="btn" data-a="wall">Сделать обоями</button><button class="btn" data-a="close">Закрыть</button></div>' +
-      '<div style="flex:1;display:grid;place-items:center;padding:24px">' +
-      '<div style="width:min(660px,92%);aspect-ratio:16/10;border-radius:18px;box-shadow:var(--shadow-w);' + ART(arg.i) + '"></div></div></div>';
+      '<div class="app-bar"><b style="font-size:12.5px">' + esc(title) + '</b><span style="flex:1"></span>' +
+      '<button class="btn" data-a="wall">Сделать обоями</button>' +
+      (hasData ? '<button class="btn" data-a="export">Скачать на ПК</button>' : '') +
+      '<button class="btn" data-a="close">Закрыть</button></div>' +
+      '<div style="flex:1;display:grid;place-items:center;padding:24px;overflow:hidden">' +
+      (hasData
+        ? '<img src="' + esc(imgData) + '" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:14px;box-shadow:var(--shadow-w)">'
+        : '<div style="width:min(660px,92%);aspect-ratio:16/10;border-radius:18px;box-shadow:var(--shadow-w);' + artStyle + '"></div>') +
+      '</div></div>';
+
     $('.app-bar', rec.body).onclick = e => {
       const b = e.target.closest('[data-a]'); if (!b) return;
-      if (b.dataset.a === 'wall') { applyWall(WALLS[arg.i % WALLS.length]); Notify('Обои', 'Фон рабочего стола обновлён', ICO.photos, true); }
-      else WM.close(rec.id);
+      const a = b.dataset.a;
+      if (a === 'wall') {
+        if (hasData) {
+          applyWall(imgData);
+        } else {
+          applyWall(WALLS[(arg.i || 0) % WALLS.length]);
+        }
+        Notify('Обои', 'Фон рабочего стола обновлён', ICO.photos, true);
+        Sound.notif();
+      } else if (a === 'export') {
+        if (isFile) exportVfsFile(arg.path);
+        else if (hasData) {
+          const dl = document.createElement('a');
+          dl.href = imgData; dl.download = title + '.png';
+          document.body.appendChild(dl); dl.click();
+          setTimeout(() => document.body.removeChild(dl), 500);
+        }
+      } else {
+        WM.close(rec.id);
+      }
     };
   }
 });
@@ -1658,6 +1980,7 @@ WM.register({
         <button class="btn" data-a="fill">Залить</button>
         <button class="btn" data-a="clear">${ICO.trash} Очистить</button>
         <button class="btn primary" data-a="save">Сохранить</button>
+        <button class="btn" data-a="export">Скачать на ПК</button>
       </div>
       <div class="paint-wrap"><canvas id="pCv" width="1280" height="820" style="width:min(100%,1280px);height:auto"></canvas></div>
       <div class="np-status"><span id="pPos">0, 0</span><span>ЛКМ — рисовать · ПКМ — стирать</span></div>
@@ -1693,7 +2016,26 @@ WM.register({
       if (a === 'eraser') { eraser = !eraser; b.classList.toggle('primary', eraser); }
       if (a === 'fill') { g.fillStyle = color; g.fillRect(0, 0, cv.width, cv.height); }
       if (a === 'clear') { g.fillStyle = '#0d1020'; g.fillRect(0, 0, cv.width, cv.height); }
-      if (a === 'save') Notify('Paint 12', 'Рисунок сохранён в ' + HOME + '\\Изображения\\figure.png', ICO.paint);
+      if (a === 'save') {
+        const data = cv.toDataURL('image/png');
+        const dir = HOME + '\\Изображения';
+        VFS.mkdir(dir);
+        let idx = 1;
+        while (VFS.node(dir + '\\Рисунок_' + idx + '.png')) idx++;
+        const fn = 'Рисунок_' + idx + '.png';
+        VFS.write(dir + '\\' + fn, data, 'png');
+        Sound.notif();
+        Notify('Paint 12', 'Сохранено: ' + fn, ICO.paint, true);
+      }
+      if (a === 'export') {
+        const data = cv.toDataURL('image/png');
+        const aEl = document.createElement('a');
+        aEl.href = data; aEl.download = 'рисунок.png';
+        document.body.appendChild(aEl); aEl.click();
+        setTimeout(() => document.body.removeChild(aEl), 500);
+        Sound.notif();
+        Notify('Paint 12', 'Рисунок скачан на ваш ПК', ICO.paint, true);
+      }
     };
     $('#pSize', rec.body).oninput = e => { size = +e.target.value; $('#pSizeTxt', rec.body).textContent = size + ' px'; };
     $('#pColor', rec.body).oninput = e => { color = e.target.value; eraser = false; $$('.pc', rec.body).forEach(x => x.classList.remove('on')); };
@@ -1925,11 +2267,58 @@ WM.register({
 
     setUI();
     rec.api.stop = () => { clearInterval(rec.api.iv); if (player && ready && player.pauseVideo) player.pauseVideo(); };
+
+    let localAudio = null;
+    function playLocal(fullPath, trackName) {
+      if (player && ready && player.pauseVideo) { player.pauseVideo(); markPlaying(false); }
+      if (localAudio) { localAudio.pause(); localAudio = null; }
+      const n = VFS.node(fullPath);
+      if (!n) return;
+      const nm = trackName || VFS.nameOf(fullPath);
+      $('.m2-name', rec.body).textContent = nm;
+      $('.m2-art', rec.body).textContent = 'Локальный файл';
+      $('.tb-title', rec.node).textContent = 'Музыка — ' + nm;
+
+      if (n.content && n.content.startsWith('data:audio')) {
+        localAudio = new Audio(n.content);
+        localAudio.volume = State.volume / 100;
+        localAudio.onended = () => markPlaying(false);
+        localAudio.ontimeupdate = () => {
+          if (!dragging && localAudio && localAudio.duration) {
+            seek.value = (localAudio.currentTime / localAudio.duration) * 1000;
+            curEl.textContent = mmss(localAudio.currentTime);
+            durEl.textContent = mmss(localAudio.duration);
+          }
+        };
+        localAudio.play();
+        markPlaying(true);
+      } else {
+        try {
+          const ac = new (window.AudioContext || window.webkitAudioContext)();
+          const freqs = fullPath.includes('orbit') ? [220, 277, 330, 440] : [261, 330, 392, 523];
+          freqs.forEach((f, idx) => {
+            const o = ac.createOscillator(); const g = ac.createGain();
+            o.type = 'sine'; o.frequency.value = f;
+            g.gain.setValueAtTime(0.001, ac.currentTime);
+            g.gain.linearRampToValueAtTime(0.04 * (State.volume / 100), ac.currentTime + 1.0 + idx * 0.2);
+            g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 6.0);
+            o.connect(g).connect(ac.destination);
+            o.start(); o.stop(ac.currentTime + 6.2);
+          });
+          curEl.textContent = '0:01'; durEl.textContent = '0:06'; seek.value = 200;
+          markPlaying(true);
+          setTimeout(() => markPlaying(false), 6000);
+        } catch (e) {}
+      }
+    }
+
+    if (arg && arg.path) {
+      playLocal(arg.path, arg.name);
+    }
   },
   onClose(rec) {
     clearInterval(rec.api.iv);
     const yt = rec.api.yt && rec.api.yt();
-    // Звук должен умолкнуть вместе с окном, иначе играет «в никуда».
     try { if (yt && yt.stopVideo) yt.stopVideo(); } catch (e) { /* плеер уже снят */ }
   },
 });
@@ -1941,8 +2330,19 @@ WM.register({
   id: 'calendar', title: 'Календарь', icon: ICO.cal, w: 780, h: 560,
   init(rec) {
     const cur = new Date(); cur.setDate(1);
-    const EVENTS = { 3: 'Синк ядра', 11: 'Ревью Плексуса', 17: 'Релиз 1.4', 24: 'Демо команде' };
+    function getEvents() {
+      try {
+        const raw = localStorage.getItem('lumen.cal.events.' + USER);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return { 3: 'Синк ядра', 11: 'Ревью Плексуса', 17: 'Релиз 1.4', 24: 'Демо команде' };
+    }
+    function saveEvents(evs) {
+      try { localStorage.setItem('lumen.cal.events.' + USER, JSON.stringify(evs)); } catch (e) {}
+    }
+
     function render() {
+      const EVENTS = getEvents();
       const y = cur.getFullYear(), m = cur.getMonth();
       const start = (new Date(y, m, 1).getDay() + 6) % 7;
       const days = new Date(y, m + 1, 0).getDate();
@@ -1951,9 +2351,10 @@ WM.register({
       for (let i = 0; i < start; i++) cells += '<div class="out">' + (new Date(y, m, -start + i + 1).getDate()) + '</div>';
       for (let d = 1; d <= days; d++) {
         const isToday = d === today.getDate() && m === today.getMonth() && y === today.getFullYear();
-        const ev = EVENTS[d];
-        cells += '<div class="' + (isToday ? 'today' : '') + (ev ? ' ev' : '') + '">' + d +
-          (ev ? '<div style="font-size:9.5px;opacity:.85;margin-top:4px;font-weight:500">' + esc(ev) + '</div>' : '') + '</div>';
+        const dateKey = y + '-' + pad(m + 1) + '-' + pad(d);
+        const ev = EVENTS[dateKey] || EVENTS[d];
+        cells += '<div class="cal-day' + (isToday ? ' today' : '') + (ev ? ' ev has-ev' : '') + '" data-date="' + dateKey + '" data-d="' + d + '" style="cursor:pointer" title="Нажмите, чтобы добавить или изменить событие">' + d +
+          (ev ? '<div style="font-size:9.5px;opacity:.85;margin-top:4px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(ev) + '</div>' : '') + '</div>';
       }
       const tail = (7 - ((start + days) % 7)) % 7;
       for (let i = 1; i <= tail; i++) cells += '<div class="out">' + i + '</div>';
@@ -1961,6 +2362,7 @@ WM.register({
         '<div class="cal-head"><h2>' + MON[m] + ' ' + y + '</h2>' +
         '<div style="display:flex;gap:8px"><button class="btn" data-a="prev">←</button><button class="btn" data-a="today">Сегодня</button><button class="btn" data-a="next">→</button></div></div>' +
         '<div class="cal-grid">' + cells + '</div></div></div>';
+
       $('.cal-head', rec.body).onclick = e => {
         const b = e.target.closest('[data-a]'); if (!b) return;
         if (b.dataset.a === 'prev') cur.setMonth(cur.getMonth() - 1);
@@ -1968,8 +2370,87 @@ WM.register({
         if (b.dataset.a === 'today') { const n = new Date(); cur.setFullYear(n.getFullYear(), n.getMonth(), 1); }
         render();
       };
+
+      $('.cal-grid', rec.body).onclick = e => {
+        const cell = e.target.closest('.cal-day');
+        if (!cell) return;
+        const key = cell.dataset.date;
+        const dNum = cell.dataset.d;
+        const oldEv = EVENTS[key] || EVENTS[dNum] || '';
+        const res = prompt('Событие на ' + key + ' (оставьте пустым для удаления):', oldEv);
+        if (res !== null) {
+          if (res.trim()) {
+            EVENTS[key] = res.trim();
+            Sound.notif();
+            Notify('Календарь', 'Событие сохранено на ' + key, ICO.cal, true);
+          } else {
+            delete EVENTS[key];
+            delete EVENTS[dNum];
+            Sound.click();
+            Notify('Календарь', 'Событие удалено', ICO.cal, true);
+          }
+          saveEvents(EVENTS);
+          render();
+        }
+      };
     }
     render();
+  }
+});
+
+/* ============================================================================
+   ПРИЛОЖЕНИЕ: ЗАМЕТКИ (STICKY NOTES)
+   ========================================================================== */
+WM.register({
+  id: 'sticky', title: 'Заметки', icon: ICO.note, w: 300, h: 320, multi: true,
+  init(rec, arg) {
+    const noteId = (arg && arg.id) || 'note_' + Date.now();
+    let saved = null;
+    try {
+      const all = JSON.parse(localStorage.getItem('lumen.stickies') || '{}');
+      saved = all[noteId] || { text: '', color: '#fff9c4' };
+    } catch (e) { saved = { text: '', color: '#fff9c4' }; }
+
+    const COLORS = ['#fff9c4', '#e1f5fe', '#e8f5e9', '#fce4ec', '#f3e5f5'];
+    rec.body.innerHTML = `
+      <div class="sticky-app" style="background:${saved.color};color:#222">
+        <div class="sticky-bar">
+          <div class="sticky-colors">
+            ${COLORS.map(c => '<button class="sticky-c" data-c="' + c + '" style="background:' + c + '"></button>').join('')}
+          </div>
+          <button class="icon-btn sticky-add" title="Новая заметка" style="width:24px;height:24px;color:#333">${ICO.plus}</button>
+        </div>
+        <textarea class="sticky-area" placeholder="Напишите заметку...">${esc(saved.text)}</textarea>
+      </div>
+    `;
+
+    const appEl = $('.sticky-app', rec.body);
+    const ta = $('.sticky-area', rec.body);
+
+    function persist() {
+      try {
+        const all = JSON.parse(localStorage.getItem('lumen.stickies') || '{}');
+        all[noteId] = { text: ta.value, color: saved.color };
+        localStorage.setItem('lumen.stickies', JSON.stringify(all));
+      } catch (e) {}
+    }
+
+    ta.oninput = () => persist();
+
+    $('.sticky-bar', rec.body).onclick = e => {
+      const c = e.target.closest('.sticky-c');
+      if (c) {
+        saved.color = c.dataset.c;
+        appEl.style.background = saved.color;
+        persist();
+        Sound.click();
+        return;
+      }
+      if (e.target.closest('.sticky-add')) {
+        Sound.click();
+        WM.open('sticky');
+      }
+    };
   }
 });
 
@@ -3638,9 +4119,10 @@ const DESK = [
   { t: 'Документы', i: ICO.folder, f: () => WM.open('explorer', HOME + '\\Документы') },
   { t: 'Проводник', i: ICO.folder, f: () => WM.open('explorer') },
   { t: 'Блокнот', i: ICO.note, f: () => WM.open('notepad') },
+  { t: 'Заметки', i: ICO.note, f: () => WM.open('sticky') },
   { t: 'Корзина', i: ICO.trash, f: () => Notify('Корзина', 'Корзина пуста', ICO.trash, true) },
 ];
-const PINNED = ['browser', 'games', 'explorer', 'terminal', 'settings', 'notepad', 'photos', 'music', 'calc', 'store', 'taskmgr'];
+const PINNED = ['browser', 'games', 'explorer', 'terminal', 'settings', 'notepad', 'sticky', 'photos', 'music', 'calc', 'store', 'taskmgr'];
 
 /* --- Папки и файлы, созданные пользователем на рабочем столе ---
    Хранятся в виртуальной ФС (папка «Рабочий стол» в домашней папке), поэтому видны
@@ -3655,6 +4137,7 @@ let deskItems = [];
 function setDeskScope() {
   DESK_DIR = HOME + '\\Рабочий стол';
   DESK_KEY = 'lumen.deskItems.' + USER;
+  if (typeof VFS !== 'undefined' && VFS.loadUserVfs) VFS.loadUserVfs();
   loadDeskItems();
 }
 
@@ -3742,21 +4225,28 @@ function renderIcons() {
   // Созданные пользователем папки и файлы — идут первыми
   deskItems.forEach(it => {
     const isDir = it.type === 'dir';
-    const ico = isDir ? ICO.folder : (it.ext === 'txt' ? ICO.txt : ICO.file);
+    const ext = (it.ext || '').toLowerCase();
+    const ico = isDir ? ICO.folder : (ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ICO.png : (['wav', 'mp3'].includes(ext) ? ICO.music : ICO.file)));
     const n = el('div', 'dicon', '<span class="ico">' + ico + '</span><span>' + esc(it.name) + '</span>');
-    const open = () => isDir
-      ? WM.open('explorer', DESK_DIR + '\\' + it.name)
-      : WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
+    const open = () => {
+      if (isDir) return WM.open('explorer', DESK_DIR + '\\' + it.name);
+      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return WM.open('viewer', { path: DESK_DIR + '\\' + it.name });
+      if (['wav', 'mp3', 'ogg'].includes(ext)) return WM.open('music', { path: DESK_DIR + '\\' + it.name });
+      return WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
+    };
     n.ondblclick = () => { Sound.click(); open(); };
     n.onclick = () => { $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
     n.oncontextmenu = e => {
       e.preventDefault(); e.stopPropagation(); n.onclick();
-      openCtx(e.clientX, e.clientY, [
+      const ctxItems = [
         { t: 'Открыть', i: ICO.exe, f: open },
         { t: 'Переименовать', i: ICO.ren, f: () => {
             const nn = prompt('Новое имя:', it.name);
             if (nn && nn !== it.name) renameDeskItem(it.name, nn);
           } },
+      ];
+      if (!isDir) ctxItems.push({ t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(DESK_DIR + '\\' + it.name) });
+      ctxItems.push(
         { sep: true },
         { t: 'Удалить', i: ICO.trash, f: () => {
             VFS.rm(DESK_DIR + '\\' + it.name, true);
@@ -3766,7 +4256,8 @@ function renderIcons() {
           } },
         { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства',
             it.name + (isDir ? ' — папка' : ' — файл (' + (it.ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
-      ]);
+      );
+      openCtx(e.clientX, e.clientY, ctxItems);
     };
     host.appendChild(n);
   });
@@ -4050,10 +4541,62 @@ function snapActive(dir) {
 }
 function initKeys() {
   let meta = false;
+  let altTabList = [];
+  let altTabIdx = 0;
+  const altTabHud = $('#altTabHud');
+
+  function renderAltTabHud() {
+    if (!altTabHud) return;
+    if (!altTabList.length) { altTabHud.classList.remove('on'); return; }
+    altTabHud.innerHTML = altTabList.map((r, i) =>
+      '<div class="at-item ' + (i === altTabIdx ? 'on' : '') + '" data-idx="' + i + '">' +
+        (r.def.icon || ICO.settings) +
+        '<span>' + esc(r.def.title) + '</span>' +
+      '</div>'
+    ).join('');
+    altTabHud.classList.add('on');
+  }
+
+  function hideAltTabHud() {
+    if (!altTabHud) return;
+    altTabHud.classList.remove('on');
+    if (altTabList.length && altTabList[altTabIdx]) {
+      const target = altTabList[altTabIdx];
+      if (target.minimized) { target.minimized = false; target.node.classList.remove('min'); }
+      WM.focus(target.id);
+      renderTaskbar();
+    }
+    altTabList = [];
+  }
+
+  if (altTabHud) {
+    altTabHud.onclick = e => {
+      const it = e.target.closest('.at-item');
+      if (it) {
+        altTabIdx = +it.dataset.idx;
+        hideAltTabHud();
+      }
+    };
+  }
+
   window.addEventListener('keydown', e => {
     if (e.key === 'Meta') { meta = true; return; }
     const typing = /input|textarea/i.test(e.target.tagName);
     const k = e.key.toLowerCase();
+
+    // Alt + Tab: переключение задач
+    if (e.altKey && e.key === 'Tab') {
+      e.preventDefault();
+      const openWins = Object.values(State.open);
+      if (!openWins.length) return;
+      if (!altTabList.length) {
+        altTabList = openWins;
+        altTabIdx = 0;
+      }
+      altTabIdx = (altTabIdx + (e.shiftKey ? -1 : 1) + altTabList.length) % altTabList.length;
+      renderAltTabHud();
+      return;
+    }
 
     if (meta && k === 'd') {
       e.preventDefault();
@@ -4097,10 +4640,16 @@ function initKeys() {
   });
   window.addEventListener('keyup', e => {
     if (e.key === 'Meta') meta = false;
+    if (e.key === 'Alt') {
+      if (altTabHud && altTabHud.classList.contains('on')) hideAltTabHud();
+    }
     const aw = activeWin();
     if (aw && aw.api.keyup) aw.api.keyup(e.key);
   });
-  window.addEventListener('blur', () => { meta = false; });
+  window.addEventListener('blur', () => {
+    meta = false;
+    if (altTabHud && altTabHud.classList.contains('on')) hideAltTabHud();
+  });
 }
 
 /* ============================================================================
@@ -4518,6 +5067,17 @@ function initPowerOn() {
    КОНТЕКСТНОЕ МЕНЮ РАБОЧЕГО СТОЛА
    ========================================================================== */
 function initDesktopCtx() {
+  const desk = $('#desk');
+  if (desk) {
+    desk.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+    desk.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        importDroppedFiles(e.dataTransfer.files, DESK_DIR, () => renderIcons());
+      }
+    });
+  }
+
   $('#desk').addEventListener('contextmenu', e => {
     if (e.target.closest('.win') || e.target.closest('#taskbar') || e.target.closest('#start') ||
         e.target.closest('#quick') || e.target.closest('#widgets') || e.target.closest('.dicon')) return;
@@ -4525,6 +5085,7 @@ function initDesktopCtx() {
     openCtx(e.clientX, e.clientY, [
       { t: 'Создать папку', i: ICO.plus, f: () => { createDeskFolder(); } },
       { t: 'Создать текстовый файл', i: ICO.note, f: () => { createDeskFile(); } },
+      { t: 'Загрузить файлы с ПК...', i: ICO.folder, f: () => { triggerPcUpload(DESK_DIR, () => renderIcons()); } },
       { sep: true },
       { t: 'Обновить', i: ICO.refresh, f: () => { renderIcons(); Widgets.stats(); } },
       { t: 'Открыть терминал', i: ICO.term, f: () => WM.open('terminal'), k: 'Ctrl+Alt+T' },
@@ -4633,7 +5194,7 @@ function loadPrefs() {
     const acc = localStorage.getItem('w12.accent');
     if (acc) { const p = acc.split('|'); applyAccent(p[0], p[1]); }
     const th = localStorage.getItem('w12.theme'); if (th) applyTheme(th);
-    const w = localStorage.getItem('w12.wall'); if (w && WALLS.indexOf(w) >= 0) applyWall(w);
+    const w = localStorage.getItem('w12.wall'); if (w && (WALLS.indexOf(w) >= 0 || w.startsWith('data:') || w.startsWith('url('))) applyWall(w);
     const tr = localStorage.getItem('w12.transp'); if (tr !== null) applyTransparency(tr === '1');
     const al = localStorage.getItem('w12.align'); if (al) applyAlign(al);
     // Доступ: только отпечаток кода владельца.

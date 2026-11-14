@@ -861,6 +861,45 @@ html.lite #monitor.zoom{animation:none}
 .hud-bar i{display:block;height:100%;background:var(--accent);transition:width .15s}
 #bright{position:absolute;inset:0;z-index:400;background:#000;opacity:0;pointer-events:none;transition:opacity .3s}
 
+/* Alt+Tab Task Switcher */
+#altTabHud{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.95);z-index:900;padding:16px 20px;border-radius:24px;
+  background:var(--panel-strong);backdrop-filter:var(--blur);border:1px solid var(--stroke-2);box-shadow:var(--shadow-float);
+  display:flex;align-items:center;gap:12px;opacity:0;pointer-events:none;transition:.18s var(--ease-out);max-width:85vw;overflow-x:auto}
+#altTabHud.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.at-item{width:96px;height:96px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:all .15s;flex-shrink:0}
+.at-item.on{background:rgba(255,255,255,.14);border-color:var(--accent);box-shadow:0 0 20px rgba(92,200,255,.25)}
+.at-item svg{width:32px;height:32px}
+.at-item span{font-size:11px;font-weight:600;max-width:82px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+
+/* Внутрисистемные диалоги выбора файлов */
+.dlg-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);z-index:950;display:flex;align-items:center;justify-content:center}
+.dlg-card{width:min(500px,92vw);background:var(--panel-strong);backdrop-filter:var(--blur);border:1px solid var(--stroke-2);border-radius:var(--r-xl);box-shadow:var(--shadow-float);padding:20px;display:flex;flex-direction:column;gap:14px;color:var(--txt)}
+.dlg-head{display:flex;align-items:center;justify-content:space-between}
+.dlg-head h4{margin:0;font-size:15px;font-weight:600}
+.dlg-crumbs{font-size:12px;color:var(--txt-dim);padding:4px 0;display:flex;align-items:center;gap:6px;overflow-x:auto}
+.dlg-crumbs button{background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:2px 4px;border-radius:4px}
+.dlg-crumbs button:hover{background:rgba(255,255,255,.08)}
+.dlg-list{max-height:200px;min-height:120px;overflow-y:auto;border:1px solid var(--stroke);border-radius:var(--r-md);background:rgba(0,0,0,.25);display:flex;flex-direction:column}
+.dlg-item{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12.5px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background .1s}
+.dlg-item:hover{background:rgba(255,255,255,.08)}
+.dlg-item.sel{background:var(--accent);color:#05070e}
+.dlg-item svg{width:16px;height:16px;flex-shrink:0}
+.dlg-inp{background:rgba(255,255,255,.06);border:1px solid var(--stroke);border-radius:var(--r-sm);color:var(--txt);padding:8px 12px;font-size:13px;outline:none}
+.dlg-inp:focus{border-color:var(--accent)}
+.dlg-actions{display:flex;justify-content:flex-end;gap:10px}
+
+/* Заметки (Sticky Notes) */
+.sticky-app{display:flex;flex-direction:column;height:100%;transition:background .2s}
+.sticky-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(0,0,0,.08)}
+.sticky-colors{display:flex;gap:6px}
+.sticky-c{width:16px;height:16px;border-radius:50%;border:1px solid rgba(0,0,0,.15);cursor:pointer;transition:transform .1s}
+.sticky-c:hover{transform:scale(1.15)}
+.sticky-area{flex:1;border:none;background:transparent;resize:none;padding:12px;font-size:13.5px;line-height:1.5;color:inherit;outline:none;font-family:var(--font-sans)}
+
+/* Интерактивный календарь: индикатор событий */
+.cal-grid .has-ev{position:relative}
+.cal-grid .has-ev::after{content:'';position:absolute;bottom:4px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--accent)}
+
 /* ============================================================
    АДАПТАЦИЯ: планшет, телефон, узкий экран
    ============================================================ */
