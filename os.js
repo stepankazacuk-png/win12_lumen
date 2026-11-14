@@ -3602,9 +3602,15 @@ WM.register({
           setTimeout(() => connect(st.url || 'about:blank'), 600);
         } else if (tries > 3) {
           fallback('Сервер не отвечает. Включён простой режим.');
+        } else if (!st.ready) {
+          fallback('Сервер Люмен не запущен. Для живого режима запустите start-windows.bat (или server.py) и откройте http://localhost:12000/');
         }
       };
-      sock.onerror = () => { if (!st.ready) fallback("silent"); };
+      sock.onerror = () => {
+        if (!st.ready) {
+          fallback('Сервер Люмен не отвечает. Запустите start-windows.bat (или server.py) и перейдите на http://localhost:12000/');
+        }
+      };
     }
 
     function send(o) {
@@ -3631,7 +3637,9 @@ WM.register({
         '.status-line{margin-top:30px;font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:6px}' +
         '.dot{width:8px;height:8px;border-radius:50%;background:#22c55e}' +
         '.dot.warn{background:#eab308}' +
+        '.warn-banner{background:rgba(234,179,8,0.14);border:1px solid rgba(234,179,8,0.4);border-radius:12px;padding:12px 18px;margin-bottom:22px;max-width:580px;text-align:center;font-size:13px;color:#fde047;line-height:1.5}' +
         '</style></head><body>' +
+        (!serverOk ? '<div class="warn-banner">⚠️ <b>Автономный режим (сервер server.py не запущен)</b><br>Для полноценного живого Chromium без ограничений сайтов запустите <code>start-windows.bat</code> и откройте <a href="http://localhost:12000/" style="color:#38bdf8;font-weight:600" target="_blank">http://localhost:12000/</a>.<br>Сайты с защитой фрейма открывайте кнопкой ↗️ в верхней панели.</div>' : '') +
         '<div class="logo">Люмен Браузер</div>' +
         '<form class="search-box" action="https://www.google.com/search" method="get">' +
         '<input type="hidden" name="igu" value="1">' +
@@ -3706,9 +3714,10 @@ WM.register({
       if (ws) { try { ws.close(); } catch (e) {} ws = null; }
       canvas.style.display = 'none';
       frame.style.display = 'block';
-      modeChip.textContent = 'простой режим';
+      const noServer = SERVER_INFO.known && !SERVER_INFO.ok;
+      modeChip.textContent = noServer ? 'простой режим (нет сервера)' : 'простой режим';
       modeChip.classList.add('warn');
-      status.textContent = 'Простой режим';
+      status.textContent = noServer ? 'Сервер не запущен (нужен server.py)' : 'Простой режим';
       hideState();
       const target = st.url || 'https://www.google.com/';
       if (reason && reason !== 'silent') Notify('Браузер', reason, ICO.globe, true);
@@ -3848,6 +3857,10 @@ WM.register({
       if (st.mode === 'live') {
         fallback('Переключено в простой режим');
       } else {
+        if (SERVER_INFO.known && !SERVER_INFO.ok) {
+          Notify('Браузер', 'Живой режим недоступен: сервер server.py не запущен. Запустите start-windows.bat и откройте http://localhost:12000/', ICO.globe, true);
+          return;
+        }
         st.mode = 'live'; stopped = false; tries = 0;
         frame.style.display = 'none';
         canvas.style.display = '';
@@ -3875,11 +3888,11 @@ WM.register({
     /* ---------- запуск ---------- */
     API.env().then(() => {
       if (SERVER_INFO.known && !SERVER_INFO.ok) {
-        fallback('silent');
+        fallback('Для живого режима нужен server.py. Откройте http://localhost:12000/');
         return;
       }
       if (SERVER_INFO.known && !SERVER_INFO.chromium) {
-        fallback('silent');
+        fallback('На сервере не найден Chromium. Включён простой режим.');
         return;
       }
       connect(st.url || 'https://www.google.com/');

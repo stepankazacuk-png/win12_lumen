@@ -207,6 +207,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def live(self):
         """Живой браузер: настоящий Chromium на сервере."""
+        self.close_connection = True
         try:
             import live
         except Exception as e:

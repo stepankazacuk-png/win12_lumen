@@ -550,8 +550,8 @@ class Session(threading.Thread):
                     pass
             self._sync()
             self._main_loop()
-        except WSError as e:
-            sys.stderr.write('живой браузер: связь прервана (%s)\n' % e)
+        except (WSError, ConnectionResetError, BrokenPipeError, OSError) as e:
+            sys.stderr.write('живой браузер: связь завершена (%s)\n' % e)
         except Exception as e:
             sys.stderr.write('живой браузер: сбой сеанса: %r\n' % (e,))
             import traceback
