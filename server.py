@@ -209,12 +209,15 @@ class Handler(SimpleHTTPRequestHandler):
 
     def env(self):
         """Сведения о сервере для окна браузера: порт и наличие Chromium."""
-        import shutil
+        try:
+            import live
+            has_chrome = bool(live.find_chromium())
+        except Exception:
+            has_chrome = False
         data = {
             'ok': True,
             'port': PORT,
-            'chromium': bool(shutil.which('chromium') or shutil.which('chromium-browser')
-                             or shutil.which('google-chrome')),
+            'chromium': has_chrome,
             'proxy': True,
         }
         body = json.dumps(data, ensure_ascii=False).encode('utf-8')

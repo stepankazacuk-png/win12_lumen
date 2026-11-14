@@ -28,6 +28,7 @@ import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -348,10 +349,32 @@ class CDP:
 
 
 def find_chromium():
-    for name in ('chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'):
+    for name in ('chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable',
+                 'chrome', 'chrome.exe', 'msedge', 'msedge.exe'):
         p = shutil.which(name)
         if p:
             return p
+    if sys.platform == 'win32':
+        candidates = [
+            os.path.expandvars(r'%ProgramFiles%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe'),
+            os.path.expandvars(r'%ProgramFiles%\Microsoft\Edge\Application\msedge.exe'),
+            os.path.expandvars(r'%LocalAppData%\Microsoft\Edge\Application\msedge.exe'),
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
+    elif sys.platform == 'darwin':
+        candidates = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
     return None
 
 
@@ -383,8 +406,12 @@ class Chromium:
                 self.error = ('На сервере не найден Chromium. Установите пакет chromium '
                               'или пользуйтесь простым режимом.')
                 return False
-            profile = '/tmp/lumen-chrome-%d' % self.port
-            subprocess.run(['rm', '-rf', profile], check=False)
+            profile = os.path.join(tempfile.gettempdir(), 'lumen-chrome-%d' % self.port)
+            if os.path.exists(profile):
+                try:
+                    shutil.rmtree(profile, ignore_errors=True)
+                except Exception:
+                    pass
             args = [
                 self.path, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
                 '--hide-scrollbars', '--disable-background-timer-throttling',

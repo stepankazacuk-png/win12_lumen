@@ -1204,7 +1204,7 @@ WM.register({
       const full = st.path + '\\' + name;
       const ext = node.ext;
       if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) WM.open('viewer', { path: full, name });
-      else if (['wav', 'mp3', 'ogg'].includes(ext)) WM.open('music', { path: full, name });
+      else if (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext)) WM.open('music', { path: full, name });
       else if (ext === 'game') { Sound.open(); WM.open('games', String(node.content || '').replace(/\.exe$/i, '')); }
       else if (ext === 'exe' || ext === 'sys') { Sound.error(); Notify('Система', '«' + name + '» — системный файл, запуск заблокирован.', ICO.shield); }
       else WM.open('notepad', { path: full });
@@ -2069,7 +2069,7 @@ const mmss = s => {
 
 WM.register({
   id: 'music', title: 'Музыка', icon: ICO.music, w: 760, h: 640,
-  init(rec) {
+  init(rec, arg) {
     const TRACKS = [
       { id: 'dQw4w9WgXcQ', n: 'Never Gonna Give You Up', a: 'Rick Astley' },
       { id: '9bZkp7q19f0', n: 'GANGNAM STYLE', a: 'PSY' },
@@ -2093,9 +2093,16 @@ WM.register({
       { id: 'QcIy9NiNbmo', n: 'Bad Blood', a: 'Taylor Swift' },
     ];
     let idx = 0, player = null, ready = false, playing = false, dragging = false;
+    let isLocal = false, localAudio = null, localTracks = [], localIdx = -1, currentTab = 'yt';
 
     rec.body.innerHTML = `<div class="app"><div class="mus2">
-      <div class="mus2-stage"><div class="mus2-frame"><div id="yt-${rec.id}"></div></div></div>
+      <div class="mus2-stage">
+        <div class="mus2-frame"><div id="yt-${rec.id}"></div></div>
+        <div class="mus-local-stage" style="display:none">
+          <div class="mus-vinyl"><div class="mus-vinyl-center">${ICO.music}</div></div>
+          <div class="mus-local-label">Локальный трек</div>
+        </div>
+      </div>
       <div class="mus2-meta"><b class="m2-name"></b><span class="m2-art"></span></div>
       <div class="mus2-bar">
         <span class="m2-cur mono">0:00</span>
@@ -2109,6 +2116,11 @@ WM.register({
         <span class="mus2-vol"><span class="m2-vlabel">Звук</span>
           <input type="range" class="m2-vol" min="0" max="100" value="${State.volume}" aria-label="Громкость"></span>
       </div>
+      <div class="mus2-tabs">
+        <button class="mus2-tab on" data-tab="yt">⭐ Хиты</button>
+        <button class="mus2-tab" data-tab="local">📁 Моя музыка</button>
+        <button class="mus2-add" data-a="upload" title="Загрузить аудио с компьютера">${ICO.plus} Добавить с ПК</button>
+      </div>
       <div class="mus2-list"></div>
     </div></div>`;
 
@@ -2117,21 +2129,70 @@ WM.register({
     const curEl = $('.m2-cur', rec.body);
     const durEl = $('.m2-dur', rec.body);
     const playBtn = $('[data-a="play"]', rec.body);
+    const stageFrame = $('.mus2-frame', rec.body);
+    const localStage = $('.mus-local-stage', rec.body);
+    const vinyl = $('.mus-vinyl', rec.body);
+    const localLabel = $('.mus-local-label', rec.body);
 
-    list.innerHTML = TRACKS.map((t, i) =>
-      `<div class="m2-row" data-i="${i}">
-        <img src="https://i.ytimg.com/vi/${t.id}/mqdefault.jpg" alt="" loading="lazy">
-        <div class="m2-rt"><b>${esc(t.n)}</b><span>${esc(t.a)}</span></div>
-        <span class="m2-num">${i + 1}</span>
-      </div>`).join('');
+    function getLocalTracks() {
+      const out = [];
+      const seen = new Set();
+      const dirs = [HOME + '\\Музыка', HOME + '\\Рабочий стол'];
+      dirs.forEach(dir => {
+        const res = VFS.list(dir);
+        if (res && res.ok && res.items) {
+          res.items.forEach(it => {
+            if (it.node && it.node.type === 'file') {
+              const ext = (it.node.ext || '').toLowerCase();
+              if (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext)) {
+                const p = dir + '\\' + it.name;
+                if (!seen.has(p)) {
+                  seen.add(p);
+                  out.push({ name: it.name, path: p, node: it.node, dirName: dir.split('\\').pop() });
+                }
+              }
+            }
+          });
+        }
+      });
+      return out;
+    }
+
+    function renderList() {
+      if (currentTab === 'yt') {
+        list.innerHTML = TRACKS.map((t, i) =>
+          `<div class="m2-row ${!isLocal && i === idx ? 'on' : ''}" data-i="${i}">
+            <img src="https://i.ytimg.com/vi/${t.id}/mqdefault.jpg" alt="" loading="lazy">
+            <div class="m2-rt"><b>${esc(t.n)}</b><span>${esc(t.a)}</span></div>
+            <span class="m2-num">${i + 1}</span>
+          </div>`).join('');
+      } else {
+        localTracks = getLocalTracks();
+        if (!localTracks.length) {
+          list.innerHTML = `<div class="m2-empty">
+            <div style="font-size:30px;opacity:.6">${ICO.music}</div>
+            <b>В вашей медиатеке пока нет музыки</b>
+            <span>Перетащите аудиофайлы (MP3, WAV, OGG) прямо в это окно или нажмите «Добавить с ПК»</span>
+          </div>`;
+        } else {
+          list.innerHTML = localTracks.map((t, i) =>
+            `<div class="m2-row ${isLocal && i === localIdx ? 'on' : ''}" data-local-i="${i}">
+              <div style="width:46px;height:34px;border-radius:6px;background:rgba(255,255,255,.08);display:grid;place-items:center;color:var(--accent);flex:none">${ICO.music}</div>
+              <div class="m2-rt"><b>${esc(t.name)}</b><span>${esc(t.dirName || 'Моя музыка')}</span></div>
+              <span class="m2-num">${i + 1}</span>
+            </div>`).join('');
+        }
+      }
+    }
 
     function setUI() {
+      if (isLocal) return;
       const t = TRACKS[idx];
       $('.m2-name', rec.body).textContent = t.n;
       $('.m2-art', rec.body).textContent = t.a;
       $('.tb-title', rec.node).textContent = 'Музыка — ' + t.n;
-      $$('.m2-row', rec.body).forEach((r, i) => r.classList.toggle('on', i === idx));
       curEl.textContent = '0:00'; durEl.textContent = '0:00'; seek.value = 0;
+      renderList();
     }
 
     function markPlaying(on) {
@@ -2139,9 +2200,22 @@ WM.register({
       playBtn.innerHTML = on ? ICO.pause : ICO.play;
       playBtn.title = on ? 'Пауза' : 'Пуск';
       rec.node.classList.toggle('mus-playing', on);
+      if (vinyl) {
+        if (on && isLocal) vinyl.classList.add('spinning');
+        else vinyl.classList.remove('spinning');
+      }
     }
 
     function select(i, autoplay) {
+      isLocal = false;
+      if (localAudio) {
+        try { localAudio.pause(); } catch (e) {}
+        localAudio = null;
+      }
+      if (stageFrame) stageFrame.style.display = 'block';
+      if (localStage) localStage.style.display = 'none';
+      if (vinyl) vinyl.classList.remove('spinning');
+
       idx = (i + TRACKS.length) % TRACKS.length;
       clearBlocked();
       setUI();
@@ -2156,6 +2230,7 @@ WM.register({
     function startTick() {
       clearInterval(rec.api.iv);
       rec.api.iv = setInterval(() => {
+        if (isLocal) return;
         if (!player || !ready || typeof player.getCurrentTime !== 'function') return;
         const d = player.getDuration() || 0, c = player.getCurrentTime() || 0;
         durEl.textContent = mmss(d);
@@ -2167,18 +2242,15 @@ WM.register({
     }
 
     function fail(err) {
+      if (isLocal) return;
       $('.mus2-stage', rec.body).innerHTML =
         `<div class="mus2-off"><b>Плеер недоступен</b>
          <p>Не удалось связаться с YouTube. Проверьте подключение к сети.</p>
          <p class="mono">${esc(String(err && err.message || err))}</p></div>`;
     }
 
-    /* Запись может запрещать показ в рамке (у YouTube это ошибка 150). Тогда
-       молча листать список нельзя: пользователь должен понять, что произошло,
-       и иметь выход — открыть песню в YouTube Music. Сообщение кладём накладкой
-       поверх плеера: сам плеер не трогаем, иначе выбор другой песни перестанет
-       работать. */
     function showBlocked(t) {
+      if (isLocal) return;
       const q = encodeURIComponent(t.n + ' ' + t.a);
       let off = $('.mus2-off', rec.body);
       if (!off) {
@@ -2210,17 +2282,19 @@ WM.register({
           onReady() {
             ready = true;
             player.setVolume(State.volume);
-            // Пока плеер поднимался, могли выбрать другую запись — ставим её.
-            if (idx !== 0) player.cueVideoById(TRACKS[idx].id);
-            setUI();
+            if (!isLocal) {
+              if (idx !== 0) player.cueVideoById(TRACKS[idx].id);
+              setUI();
+            }
           },
           onStateChange(e) {
+            if (isLocal) return;
             if (e.data === 1) { clearBlocked(); markPlaying(true); startTick(); }
             else if (e.data === 2) { markPlaying(false); clearInterval(rec.api.iv); }
             else if (e.data === 0) { select(idx + 1, true); }
           },
           onError(e) {
-            // 101 и 150 — запрет встраивания, остальное лечится повтором.
+            if (isLocal) return;
             if (e.data === 101 || e.data === 150) showBlocked(TRACKS[idx]);
             else {
               Notify('Музыка', 'Запись недоступна, включаю следующую.', ICO.music, true);
@@ -2237,23 +2311,104 @@ WM.register({
       Sound.click();
       const a = b.dataset.a;
       if (a === 'play') {
+        if (isLocal) {
+          if (localAudio) {
+            if (localAudio.paused) {
+              localAudio.play().then(() => markPlaying(true)).catch(() => markPlaying(false));
+            } else {
+              localAudio.pause();
+              markPlaying(false);
+            }
+          }
+          return;
+        }
         if (!player || !ready) return;
         if (playing) player.pauseVideo(); else player.playVideo();
       }
-      if (a === 'next') select(idx + 1, true);
-      if (a === 'prev') select(idx - 1, true);
+      if (a === 'next') {
+        if (isLocal) {
+          localTracks = getLocalTracks();
+          if (localTracks.length) {
+            const nextIdx = (localIdx + 1) % localTracks.length;
+            playLocal(localTracks[nextIdx].path, localTracks[nextIdx].name);
+          }
+          return;
+        }
+        select(idx + 1, true);
+      }
+      if (a === 'prev') {
+        if (isLocal) {
+          localTracks = getLocalTracks();
+          if (localTracks.length) {
+            const prevIdx = (localIdx - 1 + localTracks.length) % localTracks.length;
+            playLocal(localTracks[prevIdx].path, localTracks[prevIdx].name);
+          }
+          return;
+        }
+        select(idx - 1, true);
+      }
     };
 
     list.onclick = e => {
       const row = e.target.closest('.m2-row'); if (!row) return;
       Sound.click();
-      select(+row.dataset.i, true);
+      if (currentTab === 'yt') {
+        select(+row.dataset.i, true);
+      } else {
+        const i = +row.dataset.localI;
+        if (localTracks[i]) {
+          playLocal(localTracks[i].path, localTracks[i].name);
+        }
+      }
     };
+
+    $('.mus2-tabs', rec.body).onclick = e => {
+      const tabBtn = e.target.closest('[data-tab]');
+      if (tabBtn) {
+        Sound.click();
+        currentTab = tabBtn.dataset.tab;
+        $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === currentTab));
+        renderList();
+        return;
+      }
+      const addBtn = e.target.closest('[data-a="upload"]');
+      if (addBtn) {
+        Sound.click();
+        triggerPcUpload(HOME + '\\Музыка', () => {
+          currentTab = 'local';
+          $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+          renderList();
+        });
+      }
+    };
+
+    rec.body.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    rec.body.addEventListener('drop', e => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        importDroppedFiles(e.dataTransfer.files, HOME + '\\Музыка', () => {
+          currentTab = 'local';
+          $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+          renderList();
+          const first = e.dataTransfer.files[0];
+          playLocal(HOME + '\\Музыка\\' + first.name, first.name);
+        });
+      }
+    });
 
     seek.addEventListener('pointerdown', () => { dragging = true; });
     seek.addEventListener('pointerup', () => { dragging = false; });
     seek.addEventListener('change', () => {
       dragging = false;
+      if (isLocal) {
+        if (localAudio && localAudio.duration) {
+          localAudio.currentTime = localAudio.duration * (+seek.value / 1000);
+        }
+        return;
+      }
       if (!player || !ready) return;
       const d = player.getDuration() || 0;
       player.seekTo(d * (+seek.value / 1000), true);
@@ -2261,63 +2416,131 @@ WM.register({
 
     $('.m2-vol', rec.body).oninput = e => {
       State.volume = +e.target.value;
+      if (localAudio) localAudio.volume = State.volume / 100;
       if (player && ready && typeof player.setVolume === 'function') player.setVolume(State.volume);
       const v = $('#vol'); if (v) v.value = State.volume;
     };
 
-    setUI();
-    rec.api.stop = () => { clearInterval(rec.api.iv); if (player && ready && player.pauseVideo) player.pauseVideo(); };
-
-    let localAudio = null;
     function playLocal(fullPath, trackName) {
-      if (player && ready && player.pauseVideo) { player.pauseVideo(); markPlaying(false); }
-      if (localAudio) { localAudio.pause(); localAudio = null; }
+      isLocal = true;
+      if (player && ready && typeof player.pauseVideo === 'function') {
+        try { player.pauseVideo(); } catch (e) {}
+      }
+      if (localAudio) {
+        try { localAudio.pause(); } catch (e) {}
+        localAudio = null;
+      }
+      clearBlocked();
+
       const n = VFS.node(fullPath);
-      if (!n) return;
-      const nm = trackName || VFS.nameOf(fullPath);
+      const nm = trackName || VFS.nameOf(fullPath) || 'Аудиозапись';
+
       $('.m2-name', rec.body).textContent = nm;
       $('.m2-art', rec.body).textContent = 'Локальный файл';
       $('.tb-title', rec.node).textContent = 'Музыка — ' + nm;
 
-      if (n.content && n.content.startsWith('data:audio')) {
-        localAudio = new Audio(n.content);
-        localAudio.volume = State.volume / 100;
-        localAudio.onended = () => markPlaying(false);
-        localAudio.ontimeupdate = () => {
-          if (!dragging && localAudio && localAudio.duration) {
-            seek.value = (localAudio.currentTime / localAudio.duration) * 1000;
-            curEl.textContent = mmss(localAudio.currentTime);
-            durEl.textContent = mmss(localAudio.duration);
+      if (stageFrame) stageFrame.style.display = 'none';
+      if (localStage) localStage.style.display = 'flex';
+      if (localLabel) localLabel.textContent = nm;
+
+      localTracks = getLocalTracks();
+      localIdx = localTracks.findIndex(t => t.path === fullPath);
+      renderList();
+
+      if (n && n.content && (n.content.startsWith('data:') || n.content.startsWith('blob:'))) {
+        let audioSrc = n.content;
+        if (audioSrc.startsWith('data:') && !audioSrc.startsWith('data:audio/')) {
+          const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
+          const ext = (fullPath.split('.').pop() || '').toLowerCase();
+          if (mimeMap[ext]) {
+            audioSrc = audioSrc.replace(/^data:[^;]+;base64,/, 'data:' + mimeMap[ext] + ';base64,');
           }
-        };
-        localAudio.play();
-        markPlaying(true);
+        }
+
+        try {
+          localAudio = new Audio(audioSrc);
+          localAudio.volume = State.volume / 100;
+          localAudio.onloadedmetadata = () => {
+            if (localAudio && localAudio.duration) durEl.textContent = mmss(localAudio.duration);
+          };
+          localAudio.ontimeupdate = () => {
+            if (!dragging && localAudio && localAudio.duration) {
+              seek.value = (localAudio.currentTime / localAudio.duration) * 1000;
+              curEl.textContent = mmss(localAudio.currentTime);
+              durEl.textContent = mmss(localAudio.duration);
+            }
+          };
+          localAudio.onended = () => {
+            markPlaying(false);
+            if (vinyl) vinyl.classList.remove('spinning');
+            if (localTracks.length > 1 && localIdx >= 0) {
+              const nextIdx = (localIdx + 1) % localTracks.length;
+              playLocal(localTracks[nextIdx].path, localTracks[nextIdx].name);
+            }
+          };
+          localAudio.onerror = () => {
+            markPlaying(false);
+            if (vinyl) vinyl.classList.remove('spinning');
+            Notify('Музыка', 'Формат файла не поддерживается браузером.', ICO.music, true);
+          };
+
+          localAudio.play().then(() => {
+            markPlaying(true);
+            if (vinyl) vinyl.classList.add('spinning');
+          }).catch(() => {
+            markPlaying(false);
+            if (vinyl) vinyl.classList.remove('spinning');
+          });
+        } catch (e) {
+          markPlaying(false);
+        }
       } else {
         try {
           const ac = new (window.AudioContext || window.webkitAudioContext)();
           const freqs = fullPath.includes('orbit') ? [220, 277, 330, 440] : [261, 330, 392, 523];
-          freqs.forEach((f, idx) => {
+          freqs.forEach((f, fi) => {
             const o = ac.createOscillator(); const g = ac.createGain();
             o.type = 'sine'; o.frequency.value = f;
             g.gain.setValueAtTime(0.001, ac.currentTime);
-            g.gain.linearRampToValueAtTime(0.04 * (State.volume / 100), ac.currentTime + 1.0 + idx * 0.2);
+            g.gain.linearRampToValueAtTime(0.04 * (State.volume / 100), ac.currentTime + 1.0 + fi * 0.2);
             g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 6.0);
             o.connect(g).connect(ac.destination);
             o.start(); o.stop(ac.currentTime + 6.2);
           });
           curEl.textContent = '0:01'; durEl.textContent = '0:06'; seek.value = 200;
           markPlaying(true);
-          setTimeout(() => markPlaying(false), 6000);
+          if (vinyl) vinyl.classList.add('spinning');
+          setTimeout(() => {
+            markPlaying(false);
+            if (vinyl) vinyl.classList.remove('spinning');
+          }, 6000);
         } catch (e) {}
       }
     }
 
+    setUI();
+    rec.api.stop = () => {
+      clearInterval(rec.api.iv);
+      if (localAudio) { try { localAudio.pause(); } catch (e) {} }
+      if (player && ready && player.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
+    };
+    rec.api.start = a => {
+      if (a && a.path) {
+        currentTab = 'local';
+        $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+        playLocal(a.path, a.name);
+      }
+    };
+
     if (arg && arg.path) {
+      currentTab = 'local';
+      $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
       playLocal(arg.path, arg.name);
     }
   },
   onClose(rec) {
     clearInterval(rec.api.iv);
+    if (rec.api.stop) rec.api.stop();
     const yt = rec.api.yt && rec.api.yt();
     try { if (yt && yt.stopVideo) yt.stopVideo(); } catch (e) { /* плеер уже снят */ }
   },
@@ -3215,7 +3438,7 @@ const API = {
 
 WM.register({
   id: 'browser', title: 'Браузер', icon: ICO.globe, w: 1120, h: 720,
-  init(rec) {
+  init(rec, arg) {
     const QUICK = [
       { t: 'Google', u: 'https://www.google.com/' },
       { t: 'YouTube', u: 'https://www.youtube.com/' },
@@ -3241,18 +3464,20 @@ WM.register({
       <div class="br-marks"></div>
       <div class="br-stage">
         <canvas class="br-canvas" id="brCanvas" tabindex="0"></canvas>
+        <iframe class="br-frame" id="brFrame" style="display:none" allow="fullscreen; autoplay; encrypted-media"></iframe>
         <div class="br-state" id="brState"><span class="br-spin"></span><span id="brStateText">Подключение к серверу…</span></div>
       </div>
       <div class="br-foot">
         <span id="brStatus">Подключение…</span>
         <span class="spacer"></span>
-        <span class="br-chip" id="brMode">живой режим</span>
+        <span class="br-chip" id="brMode" title="Нажмите для переключения режима">живой режим</span>
         <span id="brHost"></span>
       </div>
     </div>`;
 
     const urlIn = $('#brUrl', rec.body);
     const canvas = $('#brCanvas', rec.body);
+    const frame = $('#brFrame', rec.body);
     const state = $('#brState', rec.body);
     const stateText = $('#brStateText', rec.body);
     const status = $('#brStatus', rec.body);
@@ -3266,7 +3491,7 @@ WM.register({
 
     const st = {
       mode: 'live',      // 'live' — настоящий Chromium, 'proxy' — простой режим
-      url: '',           // текущий адрес
+      url: (arg && (typeof arg === 'string' ? arg : arg.url)) || '',
       input: '',         // что набрано в адресной строке
       title: '',
       loading: false,
@@ -3346,7 +3571,7 @@ WM.register({
           status.textContent = 'Связь прервана, восстанавливаю…';
           setTimeout(() => connect(st.url || 'about:blank'), 600);
         } else if (tries > 3) {
-          fallback('Сервер не отвечает. Нужен запущенный server.py.');
+          fallback('Сервер не отвечает. Включён простой режим.');
         }
       };
       sock.onerror = () => {};
@@ -3357,17 +3582,48 @@ WM.register({
       try { ws.send(JSON.stringify(o)); } catch (e) {}
     }
 
-    /* ---------- простой режим (прокси) ---------- */
+    /* ---------- простой режим (прокси / фрейм) ---------- */
+    function loadSimpleUrl(u) {
+      if (!u || u === 'about:blank') u = 'https://www.google.com/';
+      st.url = u;
+      if (document.activeElement !== urlIn) urlIn.value = niceUrl(u);
+      hostOut.textContent = hostOf(u);
+      markActive(u);
+      status.textContent = 'Загрузка…';
+
+      let targetSrc = u;
+      if (location.protocol.startsWith('http') && SERVER_INFO.ok) {
+        targetSrc = '/__proxy?u=' + encodeURIComponent(u);
+      } else {
+        const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/i);
+        if (ytMatch) {
+          targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1];
+        }
+      }
+      try { frame.src = targetSrc; } catch (e) {}
+      frame.onload = () => {
+        status.textContent = 'Готово';
+        hideState();
+      };
+      frame.onerror = () => {
+        status.textContent = 'Ошибка загрузки';
+        hideState();
+      };
+    }
+
     function fallback(reason) {
       st.mode = 'proxy';
       stopped = true;
       if (ws) { try { ws.close(); } catch (e) {} ws = null; }
       canvas.style.display = 'none';
+      frame.style.display = 'block';
       modeChip.textContent = 'простой режим';
       modeChip.classList.add('warn');
-      showState(reason || 'Сервер недоступен.', false);
       status.textContent = 'Простой режим';
-      hostOut.textContent = '';
+      hideState();
+      const target = st.url || 'https://www.google.com/';
+      if (reason && reason !== 'silent') Notify('Браузер', reason, ICO.globe, true);
+      loadSimpleUrl(target);
     }
 
     /* ---------- переходы ---------- */
@@ -3378,7 +3634,17 @@ WM.register({
       if (/^[\w-]+(\.[\w-]+)+([/?#:]|$)/.test(s) && s.indexOf(' ') < 0) return 'https://' + s;
       return 'https://www.google.com/search?q=' + encodeURIComponent(s);
     }
-    function go(v) { Sound.click(); const u = normalize(v); st.url = u; st.input = u; send({ t: 'nav', url: u }); }
+    function go(v) {
+      Sound.click();
+      const u = normalize(v);
+      st.url = u;
+      st.input = u;
+      if (st.mode === 'live' && st.ready) {
+        send({ t: 'nav', url: u });
+      } else {
+        loadSimpleUrl(u);
+      }
+    }
     function markActive(u) {
       $$('.br-mark', marks).forEach(b => b.classList.toggle('on', hostOf(b.dataset.u) === hostOf(u)));
     }
@@ -3427,12 +3693,9 @@ WM.register({
       send({ t: 'mouse', type: 'mouseReleased', x: p.x, y: p.y, button: b.button, buttons: 0, clickCount: 2, modifiers: mods(e) });
     });
 
-    // Клавиши уходят в Chromium, когда окно активно. Система зовёт эти функции
-    // сама (os.js отдаёт клавиши активному окну), поэтому обработчиков на
-    // canvas не вешаем — иначе клавиша приходила бы дважды.
     rec.api.keys = key => {
       if (st.mode !== 'live' || !st.ready) return false;
-      if (key === 'Escape' || key === 'F5') return false;      // пусть система обработает
+      if (key === 'Escape' || key === 'F5') return false;
       if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
       send({ t: 'key', type: 'keyDown', key });
       return true;
@@ -3444,8 +3707,6 @@ WM.register({
       return true;
     };
 
-    /* Окно не в фокусе или свёрнуто — просим сервер не снимать кадры.
-       Так система не тратит силы на то, чего не видно. */
     rec.api.visible = vis => {
       if (st.mode !== 'live' || !st.ready) return;
       send({ t: vis ? 'resume' : 'pause' });
@@ -3463,23 +3724,48 @@ WM.register({
       const b = e.target.closest('[data-br]'); if (!b) return;
       const a = b.dataset.br;
       if (a === 'go') go(urlIn.value);
-      if (a === 'back') send({ t: 'back' });
-      if (a === 'fwd') send({ t: 'forward' });
-      if (a === 'reload') send({ t: 'reload' });
-      if (a === 'home') { st.url = ''; send({ t: 'nav', url: 'https://www.google.com/' }); }
+      if (a === 'back') {
+        if (st.mode === 'live' && st.ready) send({ t: 'back' });
+        else { try { frame.contentWindow.history.back(); } catch (e) {} }
+      }
+      if (a === 'fwd') {
+        if (st.mode === 'live' && st.ready) send({ t: 'forward' });
+        else { try { frame.contentWindow.history.forward(); } catch (e) {} }
+      }
+      if (a === 'reload') {
+        if (st.mode === 'live' && st.ready) send({ t: 'reload' });
+        else { try { frame.contentWindow.location.reload(); } catch (e) { loadSimpleUrl(st.url); } }
+      }
+      if (a === 'home') {
+        if (st.mode === 'live' && st.ready) { st.url = ''; send({ t: 'nav', url: 'https://www.google.com/' }); }
+        else { loadSimpleUrl('https://www.google.com/'); }
+      }
     };
+
     marks.onclick = e => {
       const b = e.target.closest('.br-mark'); if (!b) return;
       Sound.click();
-      st.url = b.dataset.u;
-      send({ t: 'nav', url: b.dataset.u });
+      go(b.dataset.u);
+    };
+
+    modeChip.onclick = () => {
+      Sound.click();
+      if (st.mode === 'live') {
+        fallback('Переключено в простой режим');
+      } else {
+        st.mode = 'live'; stopped = false; tries = 0;
+        frame.style.display = 'none';
+        canvas.style.display = '';
+        modeChip.textContent = 'живой режим';
+        modeChip.classList.remove('warn');
+        connect(st.url || 'https://www.google.com/');
+      }
     };
 
     /* ---------- размер экрана ---------- */
     function fit() {
       const r = canvas.getBoundingClientRect();
       if (st.mode !== 'live' || !st.ready || r.width < 50) return;
-      // Предел, чтобы снимок на сервере не был огромным.
       const w = Math.min(1600, Math.round(r.width));
       const h = Math.min(1000, Math.round(r.height));
       send({ t: 'resize', w: w, h: h });
@@ -3494,14 +3780,30 @@ WM.register({
     /* ---------- запуск ---------- */
     API.env().then(() => {
       if (SERVER_INFO.known && !SERVER_INFO.ok) {
-        fallback('Сервер не запущен. Откройте систему через server.py.');
+        fallback('silent');
         return;
       }
-      connect('https://www.google.com/');
+      if (SERVER_INFO.known && !SERVER_INFO.chromium) {
+        fallback('silent');
+        return;
+      }
+      connect(st.url || 'https://www.google.com/');
       setTimeout(fit, 900);
     });
 
-    rec.api.open = u => { st.mode = 'live'; stopped = false; tries = 0; canvas.style.display = ''; connect(normalize(u)); };
+    rec.api.open = u => {
+      const target = normalize(u);
+      if (st.mode === 'live') {
+        stopped = false; tries = 0; canvas.style.display = ''; frame.style.display = 'none';
+        connect(target);
+      } else {
+        loadSimpleUrl(target);
+      }
+    };
+    rec.api.start = arg => {
+      const u = typeof arg === 'string' ? arg : (arg && arg.url);
+      if (u) rec.api.open(u);
+    };
     rec.api.home = () => rec.api.open('https://www.google.com/');
     rec.api.dispose = () => { stopped = true; if (ws) { try { ws.close(); } catch (e) {} } };
   },
@@ -4226,12 +4528,12 @@ function renderIcons() {
   deskItems.forEach(it => {
     const isDir = it.type === 'dir';
     const ext = (it.ext || '').toLowerCase();
-    const ico = isDir ? ICO.folder : (ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ICO.png : (['wav', 'mp3'].includes(ext) ? ICO.music : ICO.file)));
+    const ico = isDir ? ICO.folder : (ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ICO.png : (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext) ? ICO.music : ICO.file)));
     const n = el('div', 'dicon', '<span class="ico">' + ico + '</span><span>' + esc(it.name) + '</span>');
     const open = () => {
       if (isDir) return WM.open('explorer', DESK_DIR + '\\' + it.name);
       if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return WM.open('viewer', { path: DESK_DIR + '\\' + it.name });
-      if (['wav', 'mp3', 'ogg'].includes(ext)) return WM.open('music', { path: DESK_DIR + '\\' + it.name });
+      if (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext)) return WM.open('music', { path: DESK_DIR + '\\' + it.name, name: it.name });
       return WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
     };
     n.ondblclick = () => { Sound.click(); open(); };
