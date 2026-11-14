@@ -215,18 +215,17 @@ html[data-theme="light"] .wall .vig{background:radial-gradient(130% 100% at 50% 
 .wall[data-wp="mono"] .grid{opacity:.2}
 
 /* desktop icons */
-#icons{position:absolute;inset:16px 16px calc(var(--tb-h) + 22px) 16px;display:grid;
-  grid-template-columns:repeat(auto-fill,92px);grid-auto-rows:100px;gap:6px;align-content:start;justify-items:center;
-  overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
-#icons::-webkit-scrollbar{display:none}
-.dicon{width:88px;padding:10px 4px 8px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:8px;
-  border:1px solid transparent;transition:background .18s,transform .18s,border-color .18s}
+#icons{position:absolute;inset:16px 16px calc(var(--tb-h) + 22px) 16px;overflow:hidden;pointer-events:none}
+.dicon{position:absolute;width:88px;padding:8px 4px 6px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:6px;
+  border:1px solid transparent;cursor:pointer;pointer-events:auto;user-select:none;touch-action:none;
+  transition:background .18s,border-color .18s}
 .dicon:hover{background:rgba(255,255,255,.1);border-color:var(--stroke-2);backdrop-filter:blur(8px)}
-.dicon:active{transform:scale(.95)}
+.dicon:active{transform:scale(.96)}
 .dicon.sel{background:rgba(92,200,255,.22);border-color:rgba(92,200,255,.45)}
-.dicon .ico{width:42px;height:42px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45))}
+.dicon.dragging{cursor:grabbing!important;opacity:.92;transform:scale(1.08);box-shadow:0 12px 28px rgba(0,0,0,.5);z-index:999!important;transition:none!important}
+.dicon .ico{width:44px;height:44px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45))}
 .dicon span{font-size:11.5px;font-weight:600;text-align:center;line-height:1.25;
-  text-shadow:0 1px 4px rgba(0,0,0,.75);word-break:break-word}
+  text-shadow:0 1px 4px rgba(0,0,0,.85);word-break:break-word}
 
 /* ============================================================
    TASKBAR
@@ -950,8 +949,8 @@ html.lite #monitor.zoom{animation:none}
   #showDesk{display:none}
 
   /* Значки рабочего стола: мельче, но крупнее зона нажатия. */
-  #icons{inset:10px 8px calc(var(--tb-h) + 12px) 8px;grid-template-columns:repeat(auto-fill,76px);grid-auto-rows:88px;gap:2px}
-  .dicon{width:74px;padding:8px 2px 6px;gap:6px}
+  #icons{inset:10px 8px calc(var(--tb-h) + 12px) 8px}
+  .dicon{width:74px;padding:6px 2px 4px;gap:4px}
   .dicon .ico{width:38px;height:38px}
   .dicon span{font-size:10.5px}
   .dicon:hover{background:none;border-color:transparent}
@@ -1008,7 +1007,6 @@ html.lite #monitor.zoom{animation:none}
 @media (max-width:400px){
   .lock-clock{font-size:46px}
   .dicon .ico{width:34px;height:34px}
-  #icons{grid-template-columns:repeat(auto-fill,68px)}
   .dicon{width:66px}
   .po-passname{font-size:15px}
 }

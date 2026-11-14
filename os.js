@@ -7,33 +7,34 @@
 /* ------------------------------ ICONS ------------------------------------- */
 const G = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 const ICO = {
-  pc: `<svg viewBox="0 0 24 24"><path d="M12 1.5c.9 6.1 3.5 8.7 9.6 9.6-6.1.9-8.7 3.5-9.6 9.6-.9-6.1-3.5-8.7-9.6-9.6 6.1-.9 8.7-3.5 9.6-9.6z" fill="url(#lgWin)"/></svg>`,
-  folder: `<svg viewBox="0 0 24 24"><path d="M2 7a2 2 0 0 1 2-2h4.6a2 2 0 0 1 1.5.7L11.4 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7z" fill="#ffc65c"/><path d="M2 9h20v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9z" fill="#ffd983"/></svg>`,
+  pc: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-pc-s" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0284c7"/></linearGradient><linearGradient id="g-pc-st" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#475569"/></linearGradient></defs><rect x="2" y="3" width="20" height="13.5" rx="2.5" fill="url(#g-pc-s)"/><rect x="3.5" y="4.5" width="17" height="10.5" rx="1.5" fill="#0f172a" opacity="0.45"/><path d="M6 7.5h12M6 10.5h8" stroke="#e0f2fe" stroke-width="1.2" stroke-linecap="round"/><path d="M10 16.5v3h4v-3" stroke="url(#g-pc-st)" stroke-width="2" stroke-linecap="round"/><path d="M7 19.5h10" stroke="url(#g-pc-st)" stroke-width="2" stroke-linecap="round"/></svg>`,
+  folder: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-fld-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#d97706"/><stop offset="100%" stop-color="#b45309"/></linearGradient><linearGradient id="g-fld-f" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fde047"/><stop offset="100%" stop-color="#eab308"/></linearGradient></defs><path d="M2 6a2 2 0 0 1 2-2h4.5a2 2 0 0 1 1.6.8L11.5 6H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" fill="url(#g-fld-b)"/><rect x="4" y="6" width="16" height="5" rx="1" fill="#ffffff" opacity="0.65"/><path d="M2 9.5C2 8.7 2.7 8 3.5 8h17c.8 0 1.5.7 1.5 1.5V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5z" fill="url(#g-fld-f)"/></svg>`,
   file: `<svg viewBox="0 0 24 24"><path d="M6 2h7l6 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="#8fa3c8"/><path d="M13 2l6 6h-5a1 1 0 0 1-1-1V2z" fill="#c3d2ea"/></svg>`,
   txt: `<svg viewBox="0 0 24 24"><path d="M6 2h7l6 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="#7dd3fc"/><path d="M13 2l6 6h-5a1 1 0 0 1-1-1V2z" fill="#bae6fd"/><path d="M8 12h8M8 15h8M8 18h5" stroke="#0b3b52" stroke-width="1.3"/></svg>`,
   code: `<svg viewBox="0 0 24 24"><path d="M6 2h7l6 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="#a78bfa"/><path d="M13 2l6 6h-5a1 1 0 0 1-1-1V2z" fill="#ddd6fe"/><path d="M10 12l-2 3 2 3M14 12l2 3-2 3" stroke="#2e1065" stroke-width="1.3"/></svg>`,
   png: `<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2" fill="#34d399"/><circle cx="8" cy="10" r="2" fill="#065f46"/><path d="M3 18l5-5 4 4 3-3 6 6H3z" fill="#a7f3d0"/></svg>`,
   exe: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="url(#lgWin)"/><path d="M9 8l7 4-7 4V8z" fill="#08131f"/></svg>`,
   disk: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" fill="#94a3b8"/><rect x="6" y="7" width="12" height="6" rx="1.5" fill="#e2e8f0"/><circle cx="17" cy="17" r="1.4" fill="#22c55e"/></svg>`,
-  settings: G('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 3.6 14a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 10 3.6a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 20.4 10a2 2 0 1 1 0 4 1.6 1.6 0 0 0-1 1z"/>'),
+  settings: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-set-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#64748b"/><stop offset="100%" stop-color="#334155"/></linearGradient><linearGradient id="g-set-c" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0284c7"/></linearGradient></defs><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 1 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 3.6 14a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 10 3.6a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 20.4 10a2 2 0 1 1 0 4 1.6 1.6 0 0 0-1 1z" fill="url(#g-set-g)"/><circle cx="12" cy="12" r="3.5" fill="url(#g-set-c)"/><circle cx="12" cy="12" r="1.5" fill="#f8fafc"/></svg>`,
   search: G('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'),
-  term: G('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>'),
-  calc: G('<rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M8 6h8M8 11h2M12 11h2M16 11h.01M8 15h2M12 15h2M16 15h.01M8 19h6"/>'),
-  note: G('<path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8 13h8M8 17h5"/>'),
-  paint: G('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.5-1.9-.3-1 .4-1.9 1.4-1.9H18a3 3 0 0 0 3-3c0-5.5-4-11.2-9-11.2z"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="12" cy="7.5" r="1.2" fill="currentColor"/><circle cx="16" cy="10" r="1.2" fill="currentColor"/>'),
-  music: G('<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>'),
-  photos: G('<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M4 18l5-5 3.5 3.5L16 13l4 4"/>'),
-  cal: G('<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
-  task: G('<path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2.5"/>'),
-  mail: G('<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M3 7l9 6 9-6"/>'),
+  term: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-trm-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1e293b"/><stop offset="100%" stop-color="#0f172a"/></linearGradient></defs><rect x="2" y="3" width="20" height="18" rx="3" fill="url(#g-trm-b)" stroke="#334155" stroke-width="0.8"/><rect x="2" y="3" width="20" height="4.5" rx="3" fill="#334155"/><circle cx="4.5" cy="5.2" r="1" fill="#f87171"/><circle cx="7.5" cy="5.2" r="1" fill="#fbbf24"/><circle cx="10.5" cy="5.2" r="1" fill="#4ade80"/><path d="M6 11l3.5 3-3.5 3" stroke="#4ade80" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="17" x2="16" y2="17" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  calc: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-clc-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7"/><stop offset="100%" stop-color="#0369a1"/></linearGradient></defs><rect x="3" y="2" width="18" height="20" rx="3.5" fill="url(#g-clc-b)"/><rect x="5.5" y="4.5" width="13" height="4.5" rx="1.5" fill="#0c4a6e"/><text x="16.5" y="8" fill="#38bdf8" font-size="3.5" font-family="sans-serif" font-weight="bold" text-anchor="end">125</text><circle cx="7.5" cy="12" r="1.3" fill="#ffffff" opacity="0.85"/><circle cx="12" cy="12" r="1.3" fill="#ffffff" opacity="0.85"/><circle cx="16.5" cy="12" r="1.3" fill="#f97316"/><circle cx="7.5" cy="15.5" r="1.3" fill="#ffffff" opacity="0.85"/><circle cx="12" cy="15.5" r="1.3" fill="#ffffff" opacity="0.85"/><circle cx="16.5" cy="15.5" r="1.3" fill="#f97316"/><circle cx="7.5" cy="19" r="1.3" fill="#ffffff" opacity="0.85"/><circle cx="12" cy="19" r="1.3" fill="#38bdf8"/><circle cx="16.5" cy="19" r="1.3" fill="#22c55e"/></svg>`,
+  note: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-not-t" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient></defs><path d="M4 3a2 2 0 0 1 2-2h8l6 6v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V3z" fill="#f8fafc"/><path d="M14 1v5a2 2 0 0 0 2 2h4" fill="#cbd5e1"/><rect x="4" y="1" width="10" height="4" fill="url(#g-not-t)"/><line x1="7" y1="10" x2="17" y2="10" stroke="#0284c7" stroke-width="1.3" stroke-linecap="round"/><line x1="7" y1="13.5" x2="17" y2="13.5" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round"/><line x1="7" y1="17" x2="14" y2="17" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+  paint: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-pnt-p" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fed7aa"/><stop offset="100%" stop-color="#fba04b"/></linearGradient></defs><path d="M12 2C6.5 2 2 6.5 2 12c0 4.5 3 7.8 7 7.8 1.2 0 1.8-.8 1.5-1.8-.3-1 .4-1.8 1.5-1.8h2a6 6 0 0 0 6-6C20 5.5 16.5 2 12 2z" fill="url(#g-pnt-p)"/><circle cx="6.5" cy="9.5" r="1.6" fill="#ef4444"/><circle cx="9.5" cy="5.5" r="1.6" fill="#facc15"/><circle cx="14.5" cy="5.5" r="1.6" fill="#3b82f6"/><circle cx="17.5" cy="9.5" r="1.6" fill="#10b981"/><circle cx="15.5" cy="14" r="1.6" fill="#a855f7"/><circle cx="10" cy="15" r="1.3" fill="#b45309" opacity="0.4"/></svg>`,
+  music: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-msc-b" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ec4899"/><stop offset="50%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="5.5" fill="url(#g-msc-b)"/><path d="M9 16.5a2.5 2.5 0 1 1-2.5-2.5c.3 0 .7.1 1 .2V7.5l9-2v6.8a2.5 2.5 0 1 1-2.5-2.5c.3 0 .7.1 1 .2V8l-6 1.3v7.2z" fill="#ffffff"/></svg>`,
+  photos: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-pht-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient><linearGradient id="g-pht-m" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#047857"/></linearGradient></defs><rect x="2" y="3" width="20" height="18" rx="4" fill="url(#g-pht-b)"/><circle cx="7.5" cy="8" r="2.2" fill="#fbbf24"/><path d="M2 17l5.5-5.5a1.5 1.5 0 0 1 2.1 0L14 16l2.5-2.5a1.5 1.5 0 0 1 2.1 0L22 17v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-2z" fill="url(#g-pht-m)"/></svg>`,
+  cal: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-cal-h" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ef4444"/><stop offset="100%" stop-color="#f43f5e"/></linearGradient></defs><rect x="2" y="4" width="20" height="18" rx="3.5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/><path d="M2 7.5a3.5 3.5 0 0 1 3.5-3.5h13A3.5 3.5 0 0 1 22 7.5V9H2V7.5z" fill="url(#g-cal-h)"/><rect x="6" y="2" width="2" height="3.5" rx="1" fill="#94a3b8"/><rect x="16" y="2" width="2" height="3.5" rx="1" fill="#94a3b8"/><text x="12" y="17.5" fill="#1e293b" font-size="8" font-family="sans-serif" font-weight="bold" text-anchor="middle">12</text></svg>`,
+  task: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-tsk-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1e293b"/><stop offset="100%" stop-color="#0f172a"/></linearGradient><linearGradient id="g-tsk-l" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#22c55e"/><stop offset="50%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient></defs><rect x="2" y="3" width="20" height="18" rx="3.5" fill="url(#g-tsk-b)" stroke="#334155" stroke-width="0.8"/><line x1="2" y1="8" x2="22" y2="8" stroke="#1e293b" stroke-width="1"/><line x1="2" y1="13" x2="22" y2="13" stroke="#1e293b" stroke-width="1"/><line x1="2" y1="18" x2="22" y2="18" stroke="#1e293b" stroke-width="1"/><path d="M3 14h3l2-5 3 9 3-6 2 3h5" stroke="url(#g-tsk-l)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
+  mail: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-eml-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient></defs><rect x="2" y="4" width="20" height="16" rx="3" fill="url(#g-eml-b)"/><path d="M2 6l9.2 6.5a1.5 1.5 0 0 0 1.6 0L22 6" stroke="#bfdbfe" stroke-width="1.8" stroke-linecap="round" fill="none"/><circle cx="18.5" cy="7.5" r="2.5" fill="#ef4444"/></svg>`,
   clock: G('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'),
   cpu: G('<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 2v3M14 2v3M10 19v3M14 19v3M2 10h3M2 14h3M19 10h3M19 14h3"/>'),
   power: G('<path d="M12 3v9"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/>'),
-  store: G('<path d="M4 8h16l-1.2 12a1 1 0 0 1-1 .9H6.2a1 1 0 0 1-1-.9L4 8z"/><path d="M8.5 8V6a3.5 3.5 0 1 1 7 0v2"/>'),
-  shield: G('<path d="M12 2l8 3.5v6c0 5-3.4 9-8 10.5C7.4 20.5 4 16.5 4 11.5v-6L12 2z"/><path d="M9 12l2 2 4-4"/>'),
-  globe: G('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/>'),
+  store: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-str-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7"/><stop offset="100%" stop-color="#0369a1"/></linearGradient></defs><path d="M4 7h16l-1.5 13a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8L4 7z" fill="url(#g-str-b)"/><path d="M8 7V5a4 4 0 0 1 8 0v2" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M12 11l1 2.2 2.4.3-1.8 1.6.5 2.4-2.1-1.2-2.1 1.2.5-2.4-1.8-1.6 2.4-.3L12 11z" fill="#facc15"/></svg>`,
+  shield: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-shd-l" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient><linearGradient id="g-shd-r" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#10b981"/></linearGradient></defs><path d="M12 2L4 5.5v6c0 5 3.4 9 8 10.5V2z" fill="url(#g-shd-l)"/><path d="M12 2l8 3.5v6c0 5-3.4 9-8 10.5V2z" fill="url(#g-shd-r)"/><path d="M8.5 11.5l2.5 2.5 5-5" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
+  globe: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-glb-o" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0ea5e9"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient><linearGradient id="g-glb-r" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#67e8f9"/></linearGradient></defs><circle cx="12" cy="12" r="9.5" fill="url(#g-glb-o)"/><ellipse cx="12" cy="12" rx="4.5" ry="9.5" fill="none" stroke="#e0f2fe" stroke-width="1.3" opacity="0.85"/><line x1="2.5" y1="12" x2="21.5" y2="12" stroke="#e0f2fe" stroke-width="1.3" opacity="0.85"/><path d="M4 7.5h16M4 16.5h16" stroke="#bae6fd" stroke-width="1" opacity="0.6"/><path d="M2.5 12a10.5 5 25 0 0 19 0" stroke="url(#g-glb-r)" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`,
   link: G('<path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/>'),
-  game: G('<path d="M7 8h10a5 5 0 0 1 4.7 6.7l-.6 1.8a2.2 2.2 0 0 1-3.9.7L15.6 15H8.4l-1.6 2.2a2.2 2.2 0 0 1-3.9-.7l-.6-1.8A5 5 0 0 1 7 8z"/><path d="M8 10.5v2M7 11.5h2"/><circle cx="16" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="17.6" cy="13" r=".9" fill="currentColor" stroke="none"/>'),
+  game: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-pad-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#312e81"/></linearGradient></defs><path d="M7 6h10a5 5 0 0 1 4.8 6.5l-1 4.5a2.5 2.5 0 0 1-4.2.8L14.5 15h-5l-2.1 2.8a2.5 2.5 0 0 1-4.2-.8l-1-4.5A5 5 0 0 1 7 6z" fill="url(#g-pad-b)"/><path d="M6.5 10.5v3M5 12h3" stroke="#e0e7ff" stroke-width="1.5" stroke-linecap="round"/><circle cx="16" cy="10.5" r="1" fill="#ef4444"/><circle cx="18" cy="12" r="1" fill="#22c55e"/><circle cx="16" cy="13.5" r="1" fill="#eab308"/><circle cx="14" cy="12" r="1" fill="#38bdf8"/></svg>`,
+  sticky: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-stk-b" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fef08a"/><stop offset="100%" stop-color="#facc15"/></linearGradient></defs><path d="M3 4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-6 6H5a2 2 0 0 1-2-2V4z" fill="url(#g-stk-b)"/><path d="M15 14v4.5a1.5 1.5 0 0 0 1.5 1.5H21l-6-6z" fill="#ca8a04"/><line x1="6" y1="7" x2="15" y2="7" stroke="#854d0e" stroke-width="1.3" stroke-linecap="round"/><line x1="6" y1="11" x2="17" y2="11" stroke="#854d0e" stroke-width="1.3" stroke-linecap="round"/><line x1="6" y1="15" x2="12" y2="15" stroke="#854d0e" stroke-width="1.3" stroke-linecap="round"/></svg>`,
   star: G('<path d="M12 3.6l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z"/>'),
   lock: G('<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/>'),
   sparkle: G('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/>'),
@@ -43,7 +44,7 @@ const ICO = {
   prev: G('<path d="M18 5l-9 7 9 7V5z" fill="currentColor"/><rect x="5.5" y="5" width="2.5" height="14" rx="1" fill="currentColor"/>'),
   up: G('<path d="M12 19V6M6 12l6-6 6 6"/>'),
   down: G('<path d="M12 5v13M6 12l6 6 6-6"/>'),
-  trash: G('<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'),
+  trash: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-trs-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#64748b"/></linearGradient></defs><path d="M4 6h16M8 6V4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 16 4v2" stroke="#64748b" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M5.5 6l1.2 13.5a2 2 0 0 0 2 1.8h6.6a2 2 0 0 0 2-1.8L18.5 6" fill="url(#g-trs-c)"/><path d="M10 10v7M14 10v7" stroke="#f1f5f9" stroke-width="1.5" stroke-linecap="round"/></svg>`,
   plus: G('<path d="M12 5v14M5 12h14"/>'),
   x: G('<path d="M6 6l12 12M18 6L6 18"/>'),
   min: G('<path d="M5 12h14"/>'),
@@ -2525,17 +2526,21 @@ WM.register({
       if (player && ready && player.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
     };
     rec.api.start = a => {
-      if (a && a.path) {
+      const p = typeof a === 'string' ? a : (a && a.path);
+      if (p) {
+        const n = (typeof a === 'object' && a.name) ? a.name : VFS.nameOf(p);
         currentTab = 'local';
-        $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
-        playLocal(a.path, a.name);
+        $('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+        playLocal(p, n);
       }
     };
 
-    if (arg && arg.path) {
+    if (arg && (typeof arg === 'string' ? arg : arg.path)) {
+      const p = typeof arg === 'string' ? arg : arg.path;
+      const n = (typeof arg === 'object' && arg.name) ? arg.name : VFS.nameOf(p);
       currentTab = 'local';
-      $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
-      playLocal(arg.path, arg.name);
+      $('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+      playLocal(p, n);
     }
   },
   onClose(rec) {
@@ -2625,7 +2630,7 @@ WM.register({
    ПРИЛОЖЕНИЕ: ЗАМЕТКИ (STICKY NOTES)
    ========================================================================== */
 WM.register({
-  id: 'sticky', title: 'Заметки', icon: ICO.note, w: 300, h: 320, multi: true,
+  id: 'sticky', title: 'Заметки', icon: ICO.sticky || ICO.note, w: 300, h: 320, multi: true,
   init(rec, arg) {
     const noteId = (arg && arg.id) || 'note_' + Date.now();
     let saved = null;
@@ -3418,21 +3423,42 @@ WM.register({
    Если сервер не запущен (файл открыт напрямую), окно переходит в простой
    режим: страницы показываются через серверный прокси /__proxy. */
 
-const SERVER_INFO = { known: false, ok: false, port: 12000, chromium: false };
+const SERVER_INFO = { known: false, ok: false, port: 12000, chromium: false, origin: '' };
 const API = {
   liveBase() {
-    // Открыто с сервера — берём тот же адрес. Открыто как файл — идём на порт сервера.
     if (location.protocol === 'http:' || location.protocol === 'https:') {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      if (SERVER_INFO.ok && SERVER_INFO.origin) {
+        try {
+          const u = new URL(SERVER_INFO.origin);
+          return (u.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + u.host + '/__live';
+        } catch (e) {}
+      }
       return proto + '//' + location.host + '/__live';
     }
-    return 'ws://' + (location.hostname || 'localhost') + ':' + SERVER_INFO.port + '/__live';
+    return 'ws://127.0.0.1:' + (SERVER_INFO.port || 12000) + '/__live';
   },
   env() {
+    const parse = (d, orig) => {
+      SERVER_INFO.known = true;
+      SERVER_INFO.ok = !!d.ok;
+      SERVER_INFO.port = d.port || 12000;
+      SERVER_INFO.chromium = !!d.chromium;
+      SERVER_INFO.origin = orig || '';
+      return d;
+    };
     return fetch('/__env', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { SERVER_INFO.known = true; SERVER_INFO.ok = !!d.ok; SERVER_INFO.port = d.port || 12000; SERVER_INFO.chromium = !!d.chromium; return d; })
-      .catch(() => { SERVER_INFO.known = true; return null; });
+      .then(d => parse(d, ''))
+      .catch(() => {
+        return fetch('http://127.0.0.1:12000/__env', { cache: 'no-store' })
+          .then(r => r.json())
+          .then(d => parse(d, 'http://127.0.0.1:12000'))
+          .catch(() => {
+            SERVER_INFO.known = true;
+            return null;
+          });
+      });
   },
 };
 
@@ -3460,6 +3486,7 @@ WM.register({
         <button class="btn" data-br="home" title="Начальная страница">${ICO.globe}</button>
         <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес сайта или запрос — поиск идёт через Google">
         <button class="btn primary" data-br="go">Перейти</button>
+        <button class="btn" data-br="ext" title="Открыть во внешней вкладке">${ICO.link || ICO.globe}</button>
       </div>
       <div class="br-marks"></div>
       <div class="br-stage">
@@ -3574,7 +3601,7 @@ WM.register({
           fallback('Сервер не отвечает. Включён простой режим.');
         }
       };
-      sock.onerror = () => {};
+      sock.onerror = () => { if (!st.ready) fallback("silent"); };
     }
 
     function send(o) {
@@ -3582,9 +3609,57 @@ WM.register({
       try { ws.send(JSON.stringify(o)); } catch (e) {}
     }
 
-    /* ---------- простой режим (прокси / фрейм) ---------- */
+    /* ---------- простой режим (прокси / фрейм / стартовый портал) ---------- */
+    function getPortalHtml(serverOk, chromiumOk) {
+      return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+        '<style>' +
+        'body{margin:0;padding:36px 20px;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;' +
+        'background:radial-gradient(circle at top,#1e293b,#0f172a);color:#f8fafc;display:flex;flex-direction:column;align-items:center;min-height:100vh;box-sizing:border-box}' +
+        '.logo{font-size:34px;font-weight:800;letter-spacing:-1px;margin-bottom:22px;background:linear-gradient(135deg,#38bdf8,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}' +
+        '.search-box{width:100%;max-width:580px;display:flex;gap:8px;margin-bottom:28px}' +
+        '.search-input{flex:1;padding:12px 18px;border-radius:28px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);color:#fff;font-size:15px;outline:none;transition:border-color .2s}' +
+        '.search-input:focus{border-color:#38bdf8;background:rgba(255,255,255,0.14)}' +
+        '.search-btn{padding:0 22px;border-radius:28px;border:none;background:#0284c7;color:#fff;font-weight:600;font-size:14px;cursor:pointer;transition:background .2s}' +
+        '.search-btn:hover{background:#0369a1}' +
+        '.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:12px;width:100%;max-width:580px}' +
+        '.card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:15px 10px;border-radius:14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:#e2e8f0;text-decoration:none;font-size:12.5px;font-weight:500;transition:transform .18s,background .18s}' +
+        '.card:hover{transform:translateY(-3px);background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.22)}' +
+        '.badge{font-size:24px}' +
+        '.status-line{margin-top:30px;font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:6px}' +
+        '.dot{width:8px;height:8px;border-radius:50%;background:#22c55e}' +
+        '.dot.warn{background:#eab308}' +
+        '</style></head><body>' +
+        '<div class="logo">Люмен Браузер</div>' +
+        '<form class="search-box" action="https://www.google.com/search" method="get">' +
+        '<input type="hidden" name="igu" value="1">' +
+        '<input class="search-input" name="q" placeholder="Поиск в Интернете..." autofocus autocomplete="off">' +
+        '<button class="search-btn" type="submit">Найти</button>' +
+        '</form>' +
+        '<div class="grid">' +
+        '<a class="card" href="https://www.google.com/?igu=1"><span class="badge">🌐</span>Google</a>' +
+        '<a class="card" href="https://ru.wikipedia.org/"><span class="badge">📚</span>Википедия</a>' +
+        '<a class="card" href="https://www.youtube-nocookie.com/embed"><span class="badge">▶️</span>YouTube</a>' +
+        '<a class="card" href="https://github.com/"><span class="badge">🐙</span>GitHub</a>' +
+        '<a class="card" href="https://web.archive.org/"><span class="badge">🏛️</span>Архив</a>' +
+        '<a class="card" href="https://yandex.ru/"><span class="badge">🔍</span>Яндекс</a>' +
+        '</div>' +
+        '<div class="status-line"><span class="dot ' + (serverOk ? '' : 'warn') + '"></span>' +
+        (serverOk ? (chromiumOk ? 'Сервер Люмен активен (Chromium готов)' : 'Сервер Люмен активен (прокси-режим)') : 'Автономный режим (прямой веб)') +
+        '</div></body></html>';
+    }
+
     function loadSimpleUrl(u) {
-      if (!u || u === 'about:blank') u = 'https://www.google.com/';
+      if (!u || u === 'about:blank' || u === 'about:start') {
+        st.url = 'about:start';
+        if (document.activeElement !== urlIn) urlIn.value = '';
+        hostOut.textContent = 'Люмен';
+        markActive('');
+        status.textContent = 'Готово';
+        hideState();
+        frame.removeAttribute('src');
+        frame.srcdoc = getPortalHtml(SERVER_INFO.ok, SERVER_INFO.chromium);
+        return;
+      }
       st.url = u;
       if (document.activeElement !== urlIn) urlIn.value = niceUrl(u);
       hostOut.textContent = hostOf(u);
@@ -3592,15 +3667,23 @@ WM.register({
       status.textContent = 'Загрузка…';
 
       let targetSrc = u;
-      if (location.protocol.startsWith('http') && SERVER_INFO.ok) {
-        targetSrc = '/__proxy?u=' + encodeURIComponent(u);
+      const proxyBase = SERVER_INFO.origin || (location.protocol.startsWith('http') ? '' : ('http://127.0.0.1:' + (SERVER_INFO.port || 12000)));
+      if (SERVER_INFO.ok) {
+        targetSrc = proxyBase + '/__proxy?u=' + encodeURIComponent(u);
       } else {
         const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/i);
         if (ytMatch) {
           targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1];
+        } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
+          targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
+        } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {
+          targetSrc = 'https://www.google.com/?igu=1';
         }
       }
-      try { frame.src = targetSrc; } catch (e) {}
+      try {
+        frame.removeAttribute('srcdoc');
+        frame.src = targetSrc;
+      } catch (e) {}
       frame.onload = () => {
         status.textContent = 'Готово';
         hideState();
@@ -3629,7 +3712,7 @@ WM.register({
     /* ---------- переходы ---------- */
     function normalize(v) {
       const s = String(v || '').trim();
-      if (!s || s === 'about:blank') return 'https://www.google.com/';
+      if (!s || s === 'about:blank' || s === 'about:start') return 'about:start';
       if (/^https?:\/\//i.test(s)) return s;
       if (/^[\w-]+(\.[\w-]+)+([/?#:]|$)/.test(s) && s.indexOf(' ') < 0) return 'https://' + s;
       return 'https://www.google.com/search?q=' + encodeURIComponent(s);
@@ -3724,6 +3807,10 @@ WM.register({
       const b = e.target.closest('[data-br]'); if (!b) return;
       const a = b.dataset.br;
       if (a === 'go') go(urlIn.value);
+      if (a === 'ext') {
+        const u = normalize(urlIn.value || st.url);
+        window.open(u === 'about:start' ? 'https://www.google.com/' : u, '_blank');
+      }
       if (a === 'back') {
         if (st.mode === 'live' && st.ready) send({ t: 'back' });
         else { try { frame.contentWindow.history.back(); } catch (e) {} }
@@ -4421,7 +4508,7 @@ const DESK = [
   { t: 'Документы', i: ICO.folder, f: () => WM.open('explorer', HOME + '\\Документы') },
   { t: 'Проводник', i: ICO.folder, f: () => WM.open('explorer') },
   { t: 'Блокнот', i: ICO.note, f: () => WM.open('notepad') },
-  { t: 'Заметки', i: ICO.note, f: () => WM.open('sticky') },
+  { t: 'Заметки', i: ICO.sticky || ICO.note, f: () => WM.open('sticky') },
   { t: 'Корзина', i: ICO.trash, f: () => Notify('Корзина', 'Корзина пуста', ICO.trash, true) },
 ];
 const PINNED = ['browser', 'games', 'explorer', 'terminal', 'settings', 'notepad', 'sticky', 'photos', 'music', 'calc', 'store', 'taskmgr'];
@@ -4436,11 +4523,28 @@ let DESK_KEY = 'lumen.deskItems';
 let deskItems = [];
 
 /* Переключает рабочий стол на вошедшую учётную запись и читает её список. */
+let iconPositions = {};
+function loadIconPositions() {
+  try {
+    const raw = localStorage.getItem('lumen.iconPos.' + USER);
+    iconPositions = raw ? JSON.parse(raw) : {};
+    if (!iconPositions || typeof iconPositions !== 'object') iconPositions = {};
+  } catch (e) { iconPositions = {}; }
+}
+function saveIconPositions() {
+  try { localStorage.setItem('lumen.iconPos.' + USER, JSON.stringify(iconPositions)); } catch (e) {}
+}
+function resetIconPositions() {
+  iconPositions = {};
+  try { localStorage.removeItem('lumen.iconPos.' + USER); } catch (e) {}
+}
+
 function setDeskScope() {
   DESK_DIR = HOME + '\\Рабочий стол';
   DESK_KEY = 'lumen.deskItems.' + USER;
   if (typeof VFS !== 'undefined' && VFS.loadUserVfs) VFS.loadUserVfs();
   loadDeskItems();
+  loadIconPositions();
 }
 
 function loadDeskItems() {
@@ -4520,9 +4624,98 @@ function deepCopy(from, to) {
   });
 }
 
+function makeIconDraggable(n, key, host) {
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let origLeft = 0, origTop = 0;
+  let moved = false;
+
+  n.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    isDragging = true;
+    moved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    origLeft = parseFloat(n.style.left) || 0;
+    origTop = parseFloat(n.style.top) || 0;
+    n.setPointerCapture(e.pointerId);
+  });
+
+  n.addEventListener('pointermove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      moved = true;
+      n.classList.add('dragging');
+      n.style.zIndex = '999';
+    }
+    if (moved) {
+      const hostRect = host.getBoundingClientRect();
+      const maxW = Math.max(0, hostRect.width - (n.offsetWidth || 88));
+      const maxH = Math.max(0, hostRect.height - (n.offsetHeight || 90));
+      const newLeft = Math.max(0, Math.min(maxW, origLeft + dx));
+      const newTop = Math.max(0, Math.min(maxH, origTop + dy));
+      n.style.left = Math.round(newLeft) + 'px';
+      n.style.top = Math.round(newTop) + 'px';
+    }
+  });
+
+  const endDrag = e => {
+    if (!isDragging) return;
+    isDragging = false;
+    try { n.releasePointerCapture(e.pointerId); } catch (err) {}
+    n.style.zIndex = '';
+    if (moved) {
+      n.classList.remove('dragging');
+      const hostRect = host.getBoundingClientRect();
+      const maxW = Math.max(0, hostRect.width - (n.offsetWidth || 88));
+      const maxH = Math.max(0, hostRect.height - (n.offsetHeight || 90));
+      const curLeft = parseFloat(n.style.left) || 0;
+      const curTop = parseFloat(n.style.top) || 0;
+      const snapLeft = Math.max(0, Math.min(maxW, Math.round(curLeft / 16) * 16));
+      const snapTop = Math.max(0, Math.min(maxH, Math.round(curTop / 16) * 16));
+      n.style.left = snapLeft + 'px';
+      n.style.top = snapTop + 'px';
+      iconPositions[key] = { x: snapLeft, y: snapTop };
+      saveIconPositions();
+      n._dragged = true;
+      setTimeout(() => { n._dragged = false; }, 200);
+    }
+  };
+
+  n.addEventListener('pointerup', endDrag);
+  n.addEventListener('pointercancel', endDrag);
+}
+
 function renderIcons() {
   const host = $('#icons');
+  if (!host) return;
   host.innerHTML = '';
+  loadIconPositions();
+
+  const hostRect = host.getBoundingClientRect();
+  const availH = (hostRect && hostRect.height > 100) ? hostRect.height : (window.innerHeight - 110);
+  const stepX = 96, stepY = 100;
+  const maxRows = Math.max(1, Math.floor(availH / stepY));
+  let defaultIdx = 0;
+
+  const assignPos = (n, key) => {
+    let p = iconPositions[key];
+    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+      const maxW = Math.max(0, (hostRect.width || window.innerWidth) - 88);
+      const maxH = Math.max(0, availH - 90);
+      n.style.left = Math.min(p.x, maxW) + 'px';
+      n.style.top = Math.min(p.y, maxH) + 'px';
+    } else {
+      const col = Math.floor(defaultIdx / maxRows);
+      const row = defaultIdx % maxRows;
+      n.style.left = (col * stepX) + 'px';
+      n.style.top = (row * stepY) + 'px';
+      defaultIdx++;
+    }
+    makeIconDraggable(n, key, host);
+  };
 
   // Созданные пользователем папки и файлы — идут первыми
   deskItems.forEach(it => {
@@ -4536,8 +4729,8 @@ function renderIcons() {
       if (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext)) return WM.open('music', { path: DESK_DIR + '\\' + it.name, name: it.name });
       return WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
     };
-    n.ondblclick = () => { Sound.click(); open(); };
-    n.onclick = () => { $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+    n.ondblclick = () => { if (n._dragged) return; Sound.click(); open(); };
+    n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
     n.oncontextmenu = e => {
       e.preventDefault(); e.stopPropagation(); n.onclick();
       const ctxItems = [
@@ -4561,13 +4754,14 @@ function renderIcons() {
       );
       openCtx(e.clientX, e.clientY, ctxItems);
     };
+    assignPos(n, 'user:' + it.name);
     host.appendChild(n);
   });
 
   DESK.forEach(d => {
     const n = el('div', 'dicon', '<span class="ico">' + d.i + '</span><span>' + esc(d.t) + '</span>');
-    n.ondblclick = () => { Sound.click(); d.f(); };
-    n.onclick = () => { $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+    n.ondblclick = () => { if (n._dragged) return; Sound.click(); d.f(); };
+    n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
     n.oncontextmenu = e => {
       e.preventDefault(); e.stopPropagation(); n.onclick();
       openCtx(e.clientX, e.clientY, [
@@ -4577,6 +4771,7 @@ function renderIcons() {
         { t: 'Свойства', i: ICO.settings, f: () => WM.open('settings') },
       ]);
     };
+    assignPos(n, 'sys:' + d.t);
     host.appendChild(n);
   });
 }
@@ -5389,6 +5584,7 @@ function initDesktopCtx() {
       { t: 'Создать текстовый файл', i: ICO.note, f: () => { createDeskFile(); } },
       { t: 'Загрузить файлы с ПК...', i: ICO.folder, f: () => { triggerPcUpload(DESK_DIR, () => renderIcons()); } },
       { sep: true },
+      { t: 'Выровнять значки по сетке', i: ICO.max, f: () => { resetIconPositions(); renderIcons(); Notify('Рабочий стол', 'Значки выровнены по сетке', ICO.max, true); } },
       { t: 'Обновить', i: ICO.refresh, f: () => { renderIcons(); Widgets.stats(); } },
       { t: 'Открыть терминал', i: ICO.term, f: () => WM.open('terminal'), k: 'Ctrl+Alt+T' },
       { t: 'Открыть Проводник', i: ICO.folder, f: () => WM.open('explorer'), k: 'Win+E' },

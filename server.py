@@ -188,6 +188,13 @@ class Handler(SimpleHTTPRequestHandler):
             return
         super().do_HEAD()
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', '*')
+        self.end_headers()
+
     def do_POST(self):
         if self.path.startswith('/__proxy'):
             self.proxy()
@@ -224,6 +231,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
         self.wfile.write(body)
@@ -309,6 +317,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header(k, v)
         for c in cookies:
             self.send_header('Set-Cookie', re.sub(r';\s*Domain=[^;]*', '', c, flags=re.I))
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(raw)))
         self.send_header('X-Proxied-From', final)
