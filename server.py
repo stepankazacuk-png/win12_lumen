@@ -93,7 +93,11 @@ def youtube_embed(url):
         return None
     m = (re.search(r'youtu\.be/([\w-]{6,})', url)
          or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', url))
-    return 'https://www.youtube.com/embed/%s?rel=0' % m.group(1) if m else None
+    if m:
+        return 'https://www.youtube.com/embed/%s?rel=0' % m.group(1)
+    if re.search(r'youtube\.com(?:\/.*)?$', url, re.I):
+        return 'https://www.youtube-nocookie.com/embed?listType=search&list=popular'
+    return None
 
 
 def safe_url(raw):

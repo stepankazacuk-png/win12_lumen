@@ -3468,6 +3468,7 @@ WM.register({
     const QUICK = [
       { t: 'Google', u: 'https://www.google.com/' },
       { t: 'YouTube', u: 'https://www.youtube.com/' },
+      { t: 'RuTube', u: 'https://rutube.ru/' },
       { t: 'Википедия', u: 'https://ru.wikipedia.org/' },
       { t: 'Яндекс', u: 'https://yandex.ru/' },
       { t: 'ВКонтакте', u: 'https://vk.com/' },
@@ -3590,6 +3591,8 @@ WM.register({
         } else if (m.t === 'error') {
           if (m.fallback) { fallback(m.text); return; }
           status.textContent = m.text || 'Ошибка';
+          hideState();
+          Notify('Браузер', m.text || 'Ошибка при загрузке страницы', ICO.globe, true);
         }
       };
       sock.onclose = () => {
@@ -3639,6 +3642,7 @@ WM.register({
         '<a class="card" href="https://www.google.com/?igu=1"><span class="badge">🌐</span>Google</a>' +
         '<a class="card" href="https://ru.wikipedia.org/"><span class="badge">📚</span>Википедия</a>' +
         '<a class="card" href="https://www.youtube-nocookie.com/embed"><span class="badge">▶️</span>YouTube</a>' +
+        '<a class="card" href="https://rutube.ru/"><span class="badge">📺</span>RuTube</a>' +
         '<a class="card" href="https://github.com/"><span class="badge">🐙</span>GitHub</a>' +
         '<a class="card" href="https://web.archive.org/"><span class="badge">🏛️</span>Архив</a>' +
         '<a class="card" href="https://yandex.ru/"><span class="badge">🔍</span>Яндекс</a>' +
@@ -3667,17 +3671,19 @@ WM.register({
       status.textContent = 'Загрузка…';
 
       let targetSrc = u;
-      const proxyBase = SERVER_INFO.origin || (location.protocol.startsWith('http') ? '' : ('http://127.0.0.1:' + (SERVER_INFO.port || 12000)));
-      if (SERVER_INFO.ok) {
-        targetSrc = proxyBase + '/__proxy?u=' + encodeURIComponent(u);
+      const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/i);
+      if (ytMatch) {
+        targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1];
+      } else if (/^https?:\/\/(?:www\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
+        targetSrc = 'https://www.youtube-nocookie.com/embed?listType=search&list=popular';
+      } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
+        targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
+      } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {
+        targetSrc = 'https://www.google.com/?igu=1';
       } else {
-        const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/i);
-        if (ytMatch) {
-          targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1];
-        } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
-          targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
-        } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {
-          targetSrc = 'https://www.google.com/?igu=1';
+        const proxyBase = SERVER_INFO.origin || (location.protocol.startsWith('http') ? '' : ('http://127.0.0.1:' + (SERVER_INFO.port || 12000)));
+        if (SERVER_INFO.ok) {
+          targetSrc = proxyBase + '/__proxy?u=' + encodeURIComponent(u);
         }
       }
       try {
@@ -3724,6 +3730,8 @@ WM.register({
       st.input = u;
       if (st.mode === 'live' && st.ready) {
         send({ t: 'nav', url: u });
+      } else if (st.mode === 'live' && !stopped) {
+        connect(u);
       } else {
         loadSimpleUrl(u);
       }

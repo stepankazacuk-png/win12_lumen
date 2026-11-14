@@ -420,6 +420,8 @@ class Chromium:
                 '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
                 '--autoplay-policy=no-user-gesture-required',
                 '--no-first-run', '--no-default-browser-check', '--disable-sync',
+                '--enable-features=DnsOverHttps',
+                '--dns-over-https-template=https://dns.google/dns-query',
                 '--remote-debugging-port=%d' % self.port,
                 '--user-data-dir=' + profile,
                 '--window-size=1280,800', '--lang=ru-RU', 'about:blank',
@@ -471,6 +473,23 @@ class Chromium:
 CHROME = Chromium()
 
 
+def rewrite_youtube_url(url):
+    """В условиях региональных ограничений на прямые запросы к www.youtube.com
+    перенаправляет просмотр на youtube-nocookie.com, который работает быстро,
+    открывает ролики и не вызывает таймаутов соединения.
+    """
+    if not url or 'youtube-nocookie.com' in url:
+        return url
+    import re
+    m = (re.search(r'youtu\.be/([\w-]{6,})', url)
+         or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', url))
+    if m:
+        return 'https://www.youtube-nocookie.com/embed/%s?autoplay=1' % m.group(1)
+    if re.search(r'^(?:https?://)?(?:www\.|m\.)?youtube\.com(?:/?|\?.*)?$', url, re.I):
+        return 'https://www.youtube-nocookie.com/embed?listType=search&list=popular'
+    return url
+
+
 class Session(threading.Thread):
     """Сеанс: одна вкладка окна браузера «Люмена»."""
 
@@ -499,7 +518,7 @@ class Session(threading.Thread):
             CHROME.sessions += 1
             CHROME.last_use = time.time()
             self.cdp = CHROME.cdp
-            self.target = CHROME.new_tab(self.url or 'about:blank')
+            self.target = CHROME.new_tab('about:blank')
             r = self.cdp.call('Target.attachToTarget', {'targetId': self.target, 'flatten': True})
             self.sid = r['sessionId']
             self.cdp.on_event(self._on_event)
@@ -521,6 +540,14 @@ class Session(threading.Thread):
                     pass
 
             self.ws.send_json({'t': 'ready', 'width': self.w, 'height': self.h})
+            init_url = (self.url or '').strip()
+            if init_url and init_url not in ('about:blank', 'about:start'):
+                init_url = rewrite_youtube_url(init_url)
+                self.url = init_url
+                try:
+                    self.cdp.send('Page.navigate', {'url': init_url}, session=self.sid)
+                except Exception:
+                    pass
             self._sync()
             self._main_loop()
         except WSError as e:
@@ -552,7 +579,7 @@ class Session(threading.Thread):
         try:
             r = self.cdp.call('Page.captureScreenshot',
                               {'format': 'jpeg', 'quality': QUALITY},
-                              session=self.sid, timeout=15)
+                              session=self.sid, timeout=2.5)
             return base64.b64decode(r['data'])
         except Exception:
             return None
@@ -567,11 +594,14 @@ class Session(threading.Thread):
         import hashlib
         interval = 1.0 / MAX_FPS
         last = ''
+        last_fail_at = 0.0
         while self.alive:
             t0 = time.time()
 
             # 1. Картинка. Отправляем, только если она изменилась.
-            if not self.paused:
+            # Если предыдущий снимок сорвался, делаем паузу перед повторной попыткой,
+            # чтобы не забивать сокет CDP и дать время на обработку ввода пользователя.
+            if not self.paused and (time.time() - last_fail_at > 0.4):
                 data = self._capture()
                 if data:
                     digest = hashlib.md5(data).digest()
@@ -581,6 +611,8 @@ class Session(threading.Thread):
                             self.ws.send_binary(data)
                         except WSError:
                             break
+                else:
+                    last_fail_at = time.time()
 
             # 2. Всплывающие окна страницы: закрываем, иначе она замирает.
             while self.dialogs:
@@ -588,7 +620,7 @@ class Session(threading.Thread):
                 try:
                     self.cdp.call('Page.handleJavaScriptDialog',
                                   {'accept': True, 'promptText': ''},
-                                  session=self.sid, timeout=5)
+                                  session=self.sid, timeout=3)
                 except Exception:
                     pass
                 try:
@@ -660,18 +692,20 @@ class Session(threading.Thread):
             r = self.cdp.call('Runtime.evaluate', {
                 'expression': 'JSON.stringify({u: location.href, t: document.title})',
                 'returnByValue': True,
-            }, session=self.sid, timeout=8)
+            }, session=self.sid, timeout=2.0)
             info = json.loads(r['result']['value'])
         except Exception:
             info = {'u': self.url, 't': ''}
         try:
-            h = self.cdp.call('Page.getNavigationHistory', {}, session=self.sid, timeout=8)
+            h = self.cdp.call('Page.getNavigationHistory', {}, session=self.sid, timeout=2.0)
             idx, entries = h.get('currentIndex', 0), h.get('entries', [])
             back = idx > 0
             fwd = idx < len(entries) - 1
         except Exception:
             back = fwd = False
-        self.url = info.get('u') or self.url
+        u = info.get('u') or ''
+        if u and not u.startswith('chrome-error://'):
+            self.url = u
         try:
             self.ws.send_json({'t': 'state', 'url': self.url, 'title': info.get('t', ''),
                                'loading': self.loading, 'back': back, 'fwd': fwd})
@@ -685,30 +719,39 @@ class Session(threading.Thread):
             url = (m.get('url') or '').strip()
             if not url:
                 return
-            if not url.startswith(('http://', 'https://')):
+            if url in ('about:blank', 'about:start'):
+                url = 'about:blank'
+            elif not url.startswith(('http://', 'https://')):
                 if '.' in url.split('/')[0] and ' ' not in url.split('/')[0]:
                     url = 'https://' + url
                 else:
                     url = 'https://www.google.com/search?q=' + urllib.parse.quote(url)
+            url = rewrite_youtube_url(url)
             self.loading = True
+            self.url = url
             self._sync()
             try:
-                self.cdp.call('Page.navigate', {'url': url}, session=self.sid, timeout=15)
-            except WSError as e:
-                self.ws.send_json({'t': 'error', 'text': 'Переход не удался: %s' % e})
+                self.cdp.send('Page.navigate', {'url': url}, session=self.sid)
+            except Exception as e:
+                self.loading = False
+                self._sync()
+                try:
+                    self.ws.send_json({'t': 'error', 'text': 'Переход не удался: %s' % e})
+                except Exception:
+                    pass
         elif t == 'back':
             self._history(-1)
         elif t == 'forward':
             self._history(1)
         elif t == 'reload':
             try:
-                self.cdp.call('Page.reload', {}, session=self.sid, timeout=10)
-            except WSError:
+                self.cdp.send('Page.reload', {}, session=self.sid)
+            except Exception:
                 pass
         elif t == 'stop':
             try:
-                self.cdp.call('Page.stopLoading', {}, session=self.sid, timeout=5)
-            except WSError:
+                self.cdp.send('Page.stopLoading', {}, session=self.sid)
+            except Exception:
                 pass
         elif t == 'resize':
             self.w = max(320, min(2560, int(m.get('w') or self.w)))
@@ -745,14 +788,14 @@ class Session(threading.Thread):
 
     def _history(self, delta):
         try:
-            h = self.cdp.call('Page.getNavigationHistory', {}, session=self.sid, timeout=8)
+            h = self.cdp.call('Page.getNavigationHistory', {}, session=self.sid, timeout=2.5)
             idx = h.get('currentIndex', 0)
             entries = h.get('entries', [])
             n = idx + delta
             if 0 <= n < len(entries):
-                self.cdp.call('Page.navigateToHistoryEntry',
-                              {'entryId': entries[n]['id']}, session=self.sid, timeout=8)
-        except WSError:
+                self.cdp.send('Page.navigateToHistoryEntry',
+                              {'entryId': entries[n]['id']}, session=self.sid)
+        except Exception:
             pass
 
     def _mouse(self, m):
