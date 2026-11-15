@@ -414,9 +414,11 @@ class Chromium:
                     pass
             args = [
                 self.path, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
+                '--allow-insecure-localhost',
                 '--hide-scrollbars', '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding', '--disable-features=Translate',
+                '--disable-renderer-backgrounding',
+                '--disable-features=Translate,BlockInsecurePrivateNetworkRequests',
                 '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
                 '--autoplay-policy=no-user-gesture-required',
                 '--no-first-run', '--no-default-browser-check', '--disable-sync',
@@ -472,6 +474,8 @@ class Chromium:
 
 CHROME = Chromium()
 
+SERVER_PORT = 12000
+
 
 def rewrite_youtube_url(url):
     """В условиях региональных ограничений на прямые запросы к www.youtube.com
@@ -489,9 +493,9 @@ def rewrite_youtube_url(url):
         return 'https://www.youtube-nocookie.com/embed/%s?autoplay=1' % m.group(1)
     m_search = re.search(r'youtube\.com/results\?(?:.*&)?search_query=([^&#]+)', url)
     if m_search:
-        return 'http://127.0.0.1:12000/__youtube?q=%s' % m_search.group(1)
+        return 'http://127.0.0.1:%d/__youtube?q=%s' % (SERVER_PORT, m_search.group(1))
     if re.search(r'^(?:https?://)?(?:www\.|m\.)?youtube\.com(?:/?|\?.*)?$', url, re.I):
-        return 'http://127.0.0.1:12000/__youtube'
+        return 'http://127.0.0.1:%d/__youtube' % SERVER_PORT
     return url
 
 
@@ -532,7 +536,6 @@ class Session(threading.Thread):
                 ('Page.enable', {}),
                 ('Runtime.enable', {}),
                 ('Network.enable', {}),
-                ('Network.setExtraHTTPHeaders', {'headers': {'Referer': 'https://www.google.com/'}}),
                 ('Page.setDownloadBehavior', {'behavior': 'deny'}),
                 ('Emulation.setDeviceMetricsOverride',
                  {'width': self.w, 'height': self.h, 'deviceScaleFactor': 1, 'mobile': False}),
@@ -551,7 +554,10 @@ class Session(threading.Thread):
                 init_url = rewrite_youtube_url(init_url)
                 self.url = init_url
                 try:
-                    self.cdp.send('Page.navigate', {'url': init_url, 'referrer': 'https://www.google.com/'}, session=self.sid)
+                    nav_kwargs = {'url': init_url}
+                    if 'youtube-nocookie.com' in init_url:
+                        nav_kwargs['referrer'] = 'https://www.google.com/'
+                    self.cdp.send('Page.navigate', nav_kwargs, session=self.sid)
                 except Exception:
                     pass
             self._sync()
@@ -737,7 +743,10 @@ class Session(threading.Thread):
             self.url = url
             self._sync()
             try:
-                self.cdp.send('Page.navigate', {'url': url, 'referrer': 'https://www.google.com/'}, session=self.sid)
+                nav_kwargs = {'url': url}
+                if 'youtube-nocookie.com' in url:
+                    nav_kwargs['referrer'] = 'https://www.google.com/'
+                self.cdp.send('Page.navigate', nav_kwargs, session=self.sid)
             except Exception as e:
                 self.loading = False
                 self._sync()

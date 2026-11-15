@@ -131,6 +131,8 @@ YOUTUBE_HTML = r"""<!DOCTYPE html>
   .card-body{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}
   .card-title{font-size:14px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .card-channel{font-size:12px;color:#aaa}
+  .direct-btn{background:rgba(255,255,255,0.08);color:#fff;text-decoration:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:background .15s;border:1px solid rgba(255,255,255,0.14)}
+  .direct-btn:hover{background:rgba(255,255,255,0.2);color:#fff}
 </style>
 </head>
 <body>
@@ -161,7 +163,10 @@ YOUTUBE_HTML = r"""<!DOCTYPE html>
       </div>
       <div class="player-meta">
         <span class="current-title" id="playerTitle">Сейчас играет</span>
-        <span class="status-badge"><span style="width:6px;height:6px;border-radius:50%;background:#22c55e"></span>Стабильный плеер</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <a id="directBtn" href="https://www.youtube-nocookie.com/embed/{{VIDEO_ID}}?autoplay=1" class="direct-btn">⛶ Смотреть напрямую</a>
+          <span class="status-badge"><span style="width:6px;height:6px;border-radius:50%;background:#22c55e"></span>Стабильный плеер</span>
+        </div>
       </div>
     </div>
 
@@ -199,6 +204,8 @@ function play(id, title) {
   const p = document.getElementById('mainPlayer');
   p.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
   document.getElementById('playerTitle').textContent = title || 'Воспроизведение';
+  const dBtn = document.getElementById('directBtn');
+  if (dBtn) dBtn.href = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
   try {
     const url = new URL(location.href);
     url.searchParams.set('v', id);
@@ -389,6 +396,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.close_connection = True
         try:
             import live
+            live.SERVER_PORT = PORT
         except Exception as e:
             self.fail_page('Живой браузер недоступен',
                            'Модуль live.py не загрузился: %s' % e)
@@ -402,6 +410,7 @@ class Handler(SimpleHTTPRequestHandler):
         """Сведения о сервере для окна браузера: порт и наличие Chromium."""
         try:
             import live
+            live.SERVER_PORT = PORT
             has_chrome = bool(live.find_chromium())
         except Exception:
             has_chrome = False
@@ -433,7 +442,7 @@ class Handler(SimpleHTTPRequestHandler):
             if m:
                 v = m.group(1)
 
-        default_video = v or 'dQw4w9WgXcQ'
+        default_video = v or 'aqz-KE-bpKQ'
         body = YOUTUBE_HTML.replace('{{VIDEO_ID}}', html_mod.escape(default_video, quote=True)).replace('{{QUERY}}', html_mod.escape(query, quote=True)).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -535,10 +544,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def redirect_to(self, target):
         """Внутренний переход: браузер остаётся в прокси, адрес меняется."""
+        dest = target if target.startswith('/') else self.proxy_path(target)
         body = ("""<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">"""
                 """<meta http-equiv="refresh" content="0;url=%s">"""
                 """<title>Переход</title></head><body>Переход…</body></html>"""
-                % html_mod.escape(self.proxy_path(target), quote=True)).encode('utf-8')
+                % html_mod.escape(dest, quote=True)).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
