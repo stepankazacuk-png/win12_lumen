@@ -446,7 +446,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .crumbs i{color:var(--txt-mute);font-style:normal}
 .files{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:4px;padding:14px}
 .fitem{padding:13px 6px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:9px;
-  border:1px solid transparent;transition:.15s;cursor:default}
+  border:1px solid transparent;transition:.15s;cursor:grab;user-select:none}
+.fitem.fitem-dragging{opacity:.4;cursor:grabbing}
+.fitem.drop-target{background:rgba(92,200,255,.25)!important;border-color:rgba(92,200,255,.7)!important;transform:scale(1.04)}
+.side-i.drop-target{background:rgba(92,200,255,.25)!important;color:#fff!important;transform:translateX(4px)}
+.dicon.drop-target{background:rgba(92,200,255,.3)!important;border-color:rgba(92,200,255,.7)!important;transform:scale(1.08)}
 .fitem:hover{background:rgba(255,255,255,.09);border-color:var(--stroke-2)}
 .fitem.sel{background:rgba(92,200,255,.2);border-color:rgba(92,200,255,.45)}
 .fitem svg{width:38px;height:38px}

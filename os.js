@@ -559,14 +559,31 @@ const VFS = (() => {
   }
   function cp(from, to) {
     const n = node(from); if (!n) return { ok: false, err: 'Источник не найден' };
+    if (n.type === 'dir') {
+      const mk = mkdir(to); if (!mk.ok) return mk;
+      const targetNode = node(to);
+      function copyChildren(src, dst) {
+        Object.keys(src.children || {}).forEach(k => {
+          const c = src.children[k];
+          if (c.type === 'dir') {
+            dst.children[k] = { type: 'dir', children: {} };
+            copyChildren(c, dst.children[k]);
+          } else {
+            dst.children[k] = { type: 'file', ext: c.ext, content: c.content };
+          }
+        });
+      }
+      copyChildren(n, targetNode);
+      if (to.includes('Users') || to.includes(USER)) saveUserVfs();
+      return { ok: true };
+    }
     return write(to, n.content, n.ext);
   }
   function mv(from, to) {
     const n = node(from); if (!n) return { ok: false, err: 'Источник не найден' };
-    if (n.type === 'dir') return { ok: false, err: 'Перемещение каталогов не поддерживается' };
     const w = cp(from, to); if (!w.ok) return w;
-    rm(from);
-    if (from.includes('Users') || to.includes('Users')) saveUserVfs();
+    rm(from, true);
+    if (from.includes('Users') || to.includes('Users') || from.includes(USER) || to.includes(USER)) saveUserVfs();
     return { ok: true };
   }
   function list(p) {
@@ -689,6 +706,52 @@ function triggerPcUpload(targetDir, onDone) {
     document.body.removeChild(inp);
   };
   inp.click();
+}
+
+function uniqueVfsPath(targetDir, name) {
+  let target = targetDir + '\\' + name;
+  if (!VFS.node(target)) return { path: target, name: name };
+  const ext = name.includes('.') ? name.split('.').pop() : '';
+  const base = ext ? name.slice(0, -(ext.length + 1)) : name;
+  let i = 2;
+  let newName = (ext ? (base + ' (' + i + ').' + ext) : (base + ' (' + i + ')'));
+  while (VFS.node(targetDir + '\\' + newName)) {
+    i++;
+    newName = (ext ? (base + ' (' + i + ').' + ext) : (base + ' (' + i + ')'));
+  }
+  return { path: targetDir + '\\' + newName, name: newName };
+}
+
+function moveVfsItemToFolder(srcPath, destFolder) {
+  if (!srcPath || !destFolder) return { ok: false, err: 'Не указан путь' };
+  const n = VFS.node(srcPath);
+  if (!n) return { ok: false, err: 'Файл не найден' };
+  const name = VFS.nameOf(srcPath);
+  if (destFolder === srcPath || destFolder.startsWith(srcPath + '\\')) {
+    return { ok: false, err: 'Нельзя переместить папку саму в себя' };
+  }
+  const parent = VFS.parentOf(srcPath).join('\\');
+  const parentPath = parent ? ('C:\\' + parent) : 'C:\\';
+  if (parentPath.toLowerCase() === destFolder.toLowerCase()) {
+    return { ok: true, finalName: name };
+  }
+  const u = uniqueVfsPath(destFolder, name);
+  const res = VFS.mv(srcPath, u.path);
+  if (res.ok) {
+    res.finalName = u.name;
+    if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+  }
+  return res;
+}
+
+function refreshExplorerWindows() {
+  if (typeof State !== 'undefined' && State.open) {
+    Object.values(State.open).forEach(r => {
+      if (r.app === 'explorer' && r.api && typeof r.api.render === 'function') {
+        r.api.render();
+      }
+    });
+  }
 }
 
 /* ============================================================================
@@ -1143,15 +1206,64 @@ WM.register({
     ];
     side.innerHTML = QUICK.map(q => `<button class="side-i" data-p="${esc(q.p)}">${ICO.folder}<span>${esc(q.t)}</span></button>`).join('');
     side.onclick = e => { const b = e.target.closest('.side-i'); if (b) go(b.dataset.p); };
+    $$('.side-i', side).forEach(b => {
+      b.addEventListener('dragover', e => {
+        if (window._lumenDragVfs) {
+          e.preventDefault(); e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          b.classList.add('drop-target');
+        }
+      });
+      b.addEventListener('dragleave', () => b.classList.remove('drop-target'));
+      b.addEventListener('drop', e => {
+        b.classList.remove('drop-target');
+        const drag = window._lumenDragVfs;
+        if (drag && drag.path && b.dataset.p) {
+          e.preventDefault(); e.stopPropagation();
+          const res = moveVfsItemToFolder(drag.path, b.dataset.p);
+          if (res.ok) {
+            render();
+            if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+            if (typeof renderIcons === 'function') renderIcons();
+            refreshExplorerWindows();
+            Sound.notif();
+            Notify('Проводник', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + (VFS.nameOf(b.dataset.p) || 'папку') + '»', ICO.folder, true);
+          }
+        }
+        window._lumenDragVfs = null;
+      });
+    });
 
-    // Drag-and-drop файлов с реального компьютера в текущую папку
-    files.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+    // Drag-and-drop файлов: как из реального компьютера, так и внутри системы
+    files.addEventListener('dragover', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (window._lumenDragVfs) e.dataTransfer.dropEffect = 'move';
+    });
     files.addEventListener('drop', e => {
       e.preventDefault(); e.stopPropagation();
+      if (window._lumenDragVfs) {
+        const drag = window._lumenDragVfs;
+        if (drag && drag.path && drag.sourcePath !== st.path) {
+          const res = moveVfsItemToFolder(drag.path, st.path);
+          if (res.ok) {
+            render();
+            if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+            if (typeof renderIcons === 'function') renderIcons();
+            refreshExplorerWindows();
+            Sound.notif();
+            Notify('Проводник', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + (VFS.nameOf(st.path) || 'папку') + '»', ICO.folder, true);
+          }
+        }
+        window._lumenDragVfs = null;
+        return;
+      }
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
         importDroppedFiles(e.dataTransfer.files, st.path, render);
       }
     });
+
+    rec.api.render = render;
+    rec.api.getPath = () => st.path;
 
     function go(p, push) {
       if (!VFS.node(p)) { Notify('Проводник', 'Путь недоступен: ' + p, ICO.folder); Sound.error(); return; }
@@ -1159,6 +1271,7 @@ WM.register({
       st.path = p; st.sel = null; render();
     }
     function render() {
+      files._currentPath = st.path;
       const r = VFS.list(st.path);
       crumbs.innerHTML = '';
       const rootB = el('button', null, 'Этот компьютер'); rootB.onclick = () => go('C:\\'); crumbs.appendChild(rootB);
@@ -1177,8 +1290,58 @@ WM.register({
         const fls = r.items.filter(i => i.node.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
         dirs.concat(fls).forEach(item => {
           const isDir = item.node.type === 'dir';
-          const ico = isDir ? ICO.folder : ({ txt: ICO.txt, png: ICO.png, code: ICO.code, exe: ICO.exe, game: ICO.game }[item.node.ext] || ICO.file);
+          const ext = isDir ? '' : (item.node.ext || (item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : ''));
+          const ico = isDir ? ICO.folder : ({ txt: ICO.txt, png: ICO.png, code: ICO.code, exe: ICO.exe, game: ICO.game, wav: ICO.music, mp3: ICO.music, ogg: ICO.music, flac: ICO.music, m4a: ICO.music, aac: ICO.music }[ext] || ICO.file);
           const f = el('div', 'fitem', ico + '<span>' + esc(item.name) + '</span><small>' + (isDir ? 'Папка' : (VFS.sizeOf(item.node) / 1024).toFixed(1) + ' КБ') + '</small>');
+          f.draggable = true;
+          f.dataset.path = st.path + '\\' + item.name;
+          f.dataset.name = item.name;
+          f.dataset.type = isDir ? 'dir' : 'file';
+
+          f.addEventListener('dragstart', e => {
+            const full = st.path + '\\' + item.name;
+            e.dataTransfer.setData('text/plain', full);
+            e.dataTransfer.setData('application/lumen-vfs', full);
+            e.dataTransfer.effectAllowed = 'copyMove';
+            window._lumenDragVfs = { path: full, name: item.name, isDir, sourceWin: rec, sourcePath: st.path };
+            f.classList.add('fitem-dragging');
+          });
+
+          f.addEventListener('dragend', () => {
+            f.classList.remove('fitem-dragging');
+            setTimeout(() => { window._lumenDragVfs = null; }, 100);
+          });
+
+          if (isDir) {
+            f.addEventListener('dragover', e => {
+              if (window._lumenDragVfs && window._lumenDragVfs.path !== (st.path + '\\' + item.name)) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'move';
+                f.classList.add('drop-target');
+              }
+            });
+            f.addEventListener('dragleave', () => f.classList.remove('drop-target'));
+            f.addEventListener('drop', e => {
+              f.classList.remove('drop-target');
+              const drag = window._lumenDragVfs;
+              if (drag && drag.path && drag.path !== (st.path + '\\' + item.name)) {
+                e.preventDefault();
+                e.stopPropagation();
+                const res = moveVfsItemToFolder(drag.path, st.path + '\\' + item.name);
+                if (res.ok) {
+                  render();
+                  if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+                  if (typeof renderIcons === 'function') renderIcons();
+                  refreshExplorerWindows();
+                  Sound.notif();
+                  Notify('Проводник', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + item.name + '»', ICO.folder, true);
+                }
+              }
+              window._lumenDragVfs = null;
+            });
+          }
+
           f.onclick = () => {
             $$('.fitem', files).forEach(x => x.classList.remove('sel')); f.classList.add('sel');
             st.sel = item.name; $('.st-sel', rec.body).textContent = 'Выбрано: ' + item.name;
@@ -1187,14 +1350,30 @@ WM.register({
           f.oncontextmenu = e => {
             e.preventDefault(); e.stopPropagation(); f.onclick();
             const full = st.path + '\\' + item.name;
-            openCtx(e.clientX, e.clientY, [
+            const ctxItems = [
               { t: 'Открыть', i: ICO.exe, f: () => isDir ? go(full) : openFile(item.name, item.node) },
-              { t: 'Переименовать', i: ICO.ren, f: () => { const nn = prompt('Новое имя:', item.name); if (nn && nn !== item.name) { VFS.mv(full, st.path + '\\' + nn); render(); } } },
-              { t: 'Копировать', i: ICO.copy, f: () => { rec.api.clip = full; Notify('Проводник', 'Скопировано: ' + item.name, ICO.copy, true); } },
+              { t: 'Отправить на рабочий стол', i: ICO.copy, f: () => {
+                const res = moveVfsItemToFolder(full, DESK_DIR);
+                if (res.ok) {
+                  render();
+                  if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+                  if (typeof renderIcons === 'function') renderIcons();
+                  refreshExplorerWindows();
+                  Sound.notif();
+                  Notify('Рабочий стол', '«' + item.name + '» отправлен на рабочий стол', ICO.folder, true);
+                } else {
+                  Sound.error();
+                  Notify('Ошибка', res.err || 'Не удалось отправить', ICO.folder);
+                }
+              } },
+              { t: 'Переименовать', i: ICO.ren, f: () => { const nn = prompt('Новое имя:', item.name); if (nn && nn !== item.name) { VFS.mv(full, st.path + '\\' + nn); render(); if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs(); if (typeof renderIcons === 'function') renderIcons(); } } },
+              { t: 'Вырезать', i: ICO.copy, f: () => { rec.api.clip = { op: 'cut', path: full, name: item.name }; window._lumenClip = rec.api.clip; Notify('Проводник', 'Вырезано: ' + item.name, ICO.copy, true); } },
+              { t: 'Копировать', i: ICO.copy, f: () => { rec.api.clip = { op: 'copy', path: full, name: item.name }; window._lumenClip = rec.api.clip; Notify('Проводник', 'Скопировано: ' + item.name, ICO.copy, true); } },
               (!isDir ? { t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(full) } : null),
               { sep: true },
-              { t: 'Удалить', i: ICO.trash, f: () => { const res = VFS.rm(full, true); if (!res.ok) { Sound.error(); Notify('Ошибка', res.err, ICO.trash); } render(); } },
-            ]);
+              { t: 'Удалить', i: ICO.trash, f: () => { const res = VFS.rm(full, true); if (!res.ok) { Sound.error(); Notify('Ошибка', res.err, ICO.trash); } render(); if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs(); if (typeof renderIcons === 'function') renderIcons(); } },
+            ].filter(Boolean);
+            openCtx(e.clientX, e.clientY, ctxItems);
           };
           files.appendChild(f);
         });
@@ -1222,15 +1401,31 @@ WM.register({
     files.oncontextmenu = e => {
       if (e.target.closest('.fitem')) return;
       e.preventDefault();
+      const clip = rec.api.clip || window._lumenClip;
       openCtx(e.clientX, e.clientY, [
         { t: 'Создать папку', i: ICO.plus, f: () => { const nm = prompt('Имя папки:', 'Новая папка'); if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); } } },
         { t: 'Создать текстовый файл', i: ICO.note, f: () => { const nm = prompt('Имя файла:', 'новый.txt'); if (nm) { VFS.write(st.path + '\\' + nm, ''); render(); } } },
         { t: 'Загрузить с ПК...', i: ICO.folder, f: () => triggerPcUpload(st.path, render) },
-        { t: 'Вставить', i: ICO.copy, f: () => { if (rec.api.clip) { VFS.cp(rec.api.clip, st.path + '\\' + VFS.nameOf(rec.api.clip)); render(); } } },
+        (clip ? { t: 'Вставить', i: ICO.copy, f: () => {
+          const srcPath = typeof clip === 'string' ? clip : clip.path;
+          const isCut = typeof clip === 'object' && clip.op === 'cut';
+          if (isCut) {
+            moveVfsItemToFolder(srcPath, st.path);
+            rec.api.clip = null;
+            window._lumenClip = null;
+          } else {
+            const u = uniqueVfsPath(st.path, VFS.nameOf(srcPath));
+            VFS.cp(srcPath, u.path);
+          }
+          render();
+          if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+          if (typeof renderIcons === 'function') renderIcons();
+          refreshExplorerWindows();
+        } } : null),
         { sep: true },
         { t: 'Обновить', i: ICO.refresh, f: render },
         { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства', st.path, ICO.folder, true) },
-      ]);
+      ].filter(Boolean));
     };
     render();
   }
@@ -4569,9 +4764,51 @@ function resetIconPositions() {
 function setDeskScope() {
   DESK_DIR = HOME + '\\Рабочий стол';
   DESK_KEY = 'lumen.deskItems.' + USER;
+  VFS.mkdir(HOME);
+  ['Документы', 'Изображения', 'Музыка', 'Загрузки', 'Рабочий стол', 'Корзина'].forEach(f => VFS.mkdir(HOME + '\\' + f));
   if (typeof VFS !== 'undefined' && VFS.loadUserVfs) VFS.loadUserVfs();
   loadDeskItems();
   loadIconPositions();
+}
+
+function syncDeskItemsWithVfs() {
+  if (typeof DESK_DIR === 'undefined' || typeof VFS === 'undefined') return;
+  if (!VFS.node(DESK_DIR)) VFS.mkdir(DESK_DIR);
+  const r = VFS.list(DESK_DIR);
+  if (!r.ok || !r.items) return;
+  let changed = false;
+  r.items.forEach(it => {
+    const isDir = it.node.type === 'dir';
+    const ext = isDir ? '' : (it.node.ext || (it.name.includes('.') ? it.name.split('.').pop().toLowerCase() : ''));
+    const existing = deskItems.find(x => x.name === it.name);
+    if (!existing) {
+      deskItems.push({ type: isDir ? 'dir' : 'file', name: it.name, ext });
+      changed = true;
+    } else {
+      if (existing.type !== (isDir ? 'dir' : 'file')) {
+        existing.type = isDir ? 'dir' : 'file';
+        changed = true;
+      }
+      if (!isDir && existing.ext !== ext) {
+        existing.ext = ext;
+        changed = true;
+      }
+    }
+  });
+  const valid = deskItems.filter(it => VFS.node(DESK_DIR + '\\' + it.name));
+  if (valid.length !== deskItems.length) {
+    deskItems.forEach(it => {
+      if (!VFS.node(DESK_DIR + '\\' + it.name)) {
+        delete iconPositions['user:' + it.name];
+      }
+    });
+    deskItems = valid;
+    changed = true;
+    saveIconPositions();
+  }
+  if (changed) {
+    saveDeskItems();
+  }
 }
 
 function loadDeskItems() {
@@ -4586,6 +4823,7 @@ function loadDeskItems() {
     if (it.type === 'dir') VFS.mkdir(DESK_DIR + '\\' + it.name);
     else if (!VFS.node(DESK_DIR + '\\' + it.name)) VFS.write(DESK_DIR + '\\' + it.name, '', it.ext);
   });
+  syncDeskItemsWithVfs();
 }
 function saveDeskItems() {
   try { localStorage.setItem(DESK_KEY, JSON.stringify(deskItems)); } catch (e) { /* недоступно */ }
@@ -4760,6 +4998,52 @@ function makeIconDraggable(n, key, host) {
     n.style.zIndex = '';
     if (moved) {
       n.classList.remove('dragging');
+
+      // Проверяем, не брошен ли значок в окно Проводника или на папку
+      n.style.pointerEvents = 'none';
+      const elUnder = document.elementFromPoint(e.clientX, e.clientY);
+      n.style.pointerEvents = '';
+      const exFiles = elUnder && elUnder.closest('.files');
+      const exSide = elUnder && elUnder.closest('.side-i');
+      if (key.startsWith('user:') && (exFiles || exSide)) {
+        const itemName = key.slice(5);
+        const srcPath = DESK_DIR + '\\' + itemName;
+        const destFolder = exSide ? exSide.dataset.p : (exFiles && exFiles._currentPath ? exFiles._currentPath : null);
+        if (destFolder && destFolder !== DESK_DIR) {
+          const res = moveVfsItemToFolder(srcPath, destFolder);
+          if (res.ok) {
+            syncDeskItemsWithVfs();
+            renderIcons();
+            refreshExplorerWindows();
+            Sound.notif();
+            Notify('Проводник', '«' + itemName + '» перемещён в «' + (VFS.nameOf(destFolder) || 'папку') + '»', ICO.folder, true);
+            return;
+          }
+        }
+      }
+      const targetDeskIcon = elUnder && elUnder.closest('.dicon');
+      if (key.startsWith('user:') && targetDeskIcon && targetDeskIcon !== n) {
+        const targetKey = targetDeskIcon.dataset.key;
+        if (targetKey && targetKey.startsWith('user:')) {
+          const targetName = targetKey.slice(5);
+          const targetNode = VFS.node(DESK_DIR + '\\' + targetName);
+          if (targetNode && targetNode.type === 'dir') {
+            const itemName = key.slice(5);
+            const srcPath = DESK_DIR + '\\' + itemName;
+            const destFolder = DESK_DIR + '\\' + targetName;
+            const res = moveVfsItemToFolder(srcPath, destFolder);
+            if (res.ok) {
+              syncDeskItemsWithVfs();
+              renderIcons();
+              refreshExplorerWindows();
+              Sound.notif();
+              Notify('Рабочий стол', '«' + itemName + '» перемещён в папку «' + targetName + '»', ICO.folder, true);
+              return;
+            }
+          }
+        }
+      }
+
       const { stepX, stepY, maxCols, maxRows } = getGridMetrics();
       const curLeft = parseFloat(n.style.left) || 0;
       const curTop = parseFloat(n.style.top) || 0;
@@ -4795,6 +5079,7 @@ function makeIconDraggable(n, key, host) {
 function renderIcons() {
   const host = $('#icons');
   if (!host) return;
+  syncDeskItemsWithVfs();
   host.innerHTML = '';
   loadIconPositions();
 
@@ -4874,9 +5159,41 @@ function renderIcons() {
     if (entry.isUser) {
       const it = entry.it;
       const isDir = it.type === 'dir';
-      const ext = (it.ext || '').toLowerCase();
+      const ext = (it.ext || (it.name.includes('.') ? it.name.split('.').pop() : '')).toLowerCase();
       const ico = isDir ? ICO.folder : (ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ICO.png : (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext) ? ICO.music : ICO.file)));
       const n = el('div', 'dicon', '<span class="ico">' + ico + '</span><span>' + esc(it.name) + '</span>');
+      n.dataset.key = entry.key;
+
+      if (isDir) {
+        n.addEventListener('dragover', e => {
+          if (window._lumenDragVfs && window._lumenDragVfs.path !== (DESK_DIR + '\\' + it.name)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            n.classList.add('drop-target');
+          }
+        });
+        n.addEventListener('dragleave', () => n.classList.remove('drop-target'));
+        n.addEventListener('drop', e => {
+          n.classList.remove('drop-target');
+          const drag = window._lumenDragVfs;
+          if (drag && drag.path && drag.path !== (DESK_DIR + '\\' + it.name)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetFolder = DESK_DIR + '\\' + it.name;
+            const res = moveVfsItemToFolder(drag.path, targetFolder);
+            if (res.ok) {
+              syncDeskItemsWithVfs();
+              renderIcons();
+              refreshExplorerWindows();
+              Sound.notif();
+              Notify('Папка', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + it.name + '»', ICO.folder, true);
+            }
+          }
+          window._lumenDragVfs = null;
+        });
+      }
+
       const open = () => {
         if (isDir) return WM.open('explorer', DESK_DIR + '\\' + it.name);
         if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return WM.open('viewer', { path: DESK_DIR + '\\' + it.name });
@@ -4893,6 +5210,8 @@ function renderIcons() {
               const nn = prompt('Новое имя:', it.name);
               if (nn && nn !== it.name) renameDeskItem(it.name, nn);
             } },
+          { t: 'Вырезать', i: ICO.copy, f: () => { window._lumenClip = { op: 'cut', path: DESK_DIR + '\\' + it.name, name: it.name }; Notify('Рабочий стол', 'Вырезано: ' + it.name, ICO.copy, true); } },
+          { t: 'Копировать', i: ICO.copy, f: () => { window._lumenClip = { op: 'copy', path: DESK_DIR + '\\' + it.name, name: it.name }; Notify('Рабочий стол', 'Скопировано: ' + it.name, ICO.copy, true); } },
         ];
         if (!isDir) ctxItems.push({ t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(DESK_DIR + '\\' + it.name) });
         ctxItems.push(
@@ -4904,7 +5223,7 @@ function renderIcons() {
               Notify('Рабочий стол', 'Удалено: ' + it.name, ICO.trash, true);
             } },
           { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства',
-              it.name + (isDir ? ' — папка' : ' — файл (' + (it.ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
+              it.name + (isDir ? ' — папка' : ' — файл (' + (ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
         );
         openCtx(e.clientX, e.clientY, ctxItems);
       };
@@ -4915,6 +5234,33 @@ function renderIcons() {
     } else {
       const d = entry.d;
       const n = el('div', 'dicon', '<span class="ico">' + d.i + '</span><span>' + esc(d.t) + '</span>');
+      n.dataset.key = entry.key;
+
+      if (entry.key === 'sys:Корзина') {
+        n.addEventListener('dragover', e => {
+          if (window._lumenDragVfs) {
+            e.preventDefault(); e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            n.classList.add('drop-target');
+          }
+        });
+        n.addEventListener('dragleave', () => n.classList.remove('drop-target'));
+        n.addEventListener('drop', e => {
+          n.classList.remove('drop-target');
+          const drag = window._lumenDragVfs;
+          if (drag && drag.path) {
+            e.preventDefault(); e.stopPropagation();
+            VFS.rm(drag.path, true);
+            syncDeskItemsWithVfs();
+            renderIcons();
+            refreshExplorerWindows();
+            Sound.notif();
+            Notify('Корзина', '«' + (drag.name || VFS.nameOf(drag.path)) + '» удалён в корзину', ICO.trash, true);
+          }
+          window._lumenDragVfs = null;
+        });
+      }
+
       n.ondblclick = () => { if (n._dragged) return; Sound.click(); d.f(); };
       n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
       n.oncontextmenu = e => {
@@ -5724,11 +6070,50 @@ function initPowerOn() {
 function initDesktopCtx() {
   const desk = $('#desk');
   if (desk) {
-    desk.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+    desk.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
     desk.addEventListener('drop', e => {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
+      const drag = window._lumenDragVfs;
+      if (drag && drag.path) {
+        const srcPath = drag.path;
+        if (!srcPath.startsWith(DESK_DIR + '\\') && srcPath !== DESK_DIR) {
+          const fileName = drag.name || VFS.nameOf(srcPath);
+          const { stepX, stepY, maxCols, maxRows } = getGridMetrics();
+          const host = $('#icons');
+          const rect = host ? host.getBoundingClientRect() : { left: 0, top: 0 };
+          const mouseX = Math.max(0, e.clientX - rect.left);
+          const mouseY = Math.max(0, e.clientY - rect.top);
+          const targetCol = Math.max(0, Math.min(maxCols - 1, Math.floor(mouseX / stepX)));
+          const targetRow = Math.max(0, Math.min(maxRows - 1, Math.floor(mouseY / stepY)));
+
+          const res = moveVfsItemToFolder(srcPath, DESK_DIR);
+          if (res.ok) {
+            const finalName = res.finalName || fileName;
+            iconPositions['user:' + finalName] = { col: targetCol, row: targetRow };
+            saveIconPositions();
+            syncDeskItemsWithVfs();
+            renderIcons();
+            refreshExplorerWindows();
+            Sound.notif();
+            Notify('Рабочий стол', '«' + finalName + '» перенесён на рабочий стол', ICO.folder, true);
+          } else {
+            Sound.error();
+            Notify('Ошибка', res.err || 'Не удалось переместить файл', ICO.folder);
+          }
+        }
+        window._lumenDragVfs = null;
+        return;
+      }
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        importDroppedFiles(e.dataTransfer.files, DESK_DIR, () => renderIcons());
+        importDroppedFiles(e.dataTransfer.files, DESK_DIR, () => {
+          syncDeskItemsWithVfs();
+          renderIcons();
+        });
       }
     });
   }
@@ -5737,10 +6122,26 @@ function initDesktopCtx() {
     if (e.target.closest('.win') || e.target.closest('#taskbar') || e.target.closest('#start') ||
         e.target.closest('#quick') || e.target.closest('#widgets') || e.target.closest('.dicon')) return;
     e.preventDefault();
-    openCtx(e.clientX, e.clientY, [
+    const clip = window._lumenClip;
+    const ctxList = [
       { t: 'Создать папку', i: ICO.plus, f: () => { createDeskFolder(); } },
       { t: 'Создать текстовый файл', i: ICO.note, f: () => { createDeskFile(); } },
       { t: 'Загрузить файлы с ПК...', i: ICO.folder, f: () => { triggerPcUpload(DESK_DIR, () => renderIcons()); } },
+      (clip ? { t: 'Вставить', i: ICO.copy, f: () => {
+        const srcPath = typeof clip === 'string' ? clip : clip.path;
+        const isCut = typeof clip === 'object' && clip.op === 'cut';
+        if (isCut) {
+          moveVfsItemToFolder(srcPath, DESK_DIR);
+          window._lumenClip = null;
+        } else {
+          const u = uniqueVfsPath(DESK_DIR, VFS.nameOf(srcPath));
+          VFS.cp(srcPath, u.path);
+        }
+        syncDeskItemsWithVfs();
+        renderIcons();
+        refreshExplorerWindows();
+        Sound.notif();
+      } } : null),
       { sep: true },
       { t: 'Выровнять значки по сетке', i: ICO.max, f: () => { resetIconPositions(); renderIcons(); Notify('Рабочий стол', 'Значки выровнены по сетке', ICO.max, true); } },
       { t: 'Обновить', i: ICO.refresh, f: () => { renderIcons(); Widgets.stats(); } },
@@ -5753,7 +6154,8 @@ function initDesktopCtx() {
       { sep: true },
       { t: 'Персонализация', i: ICO.paint, f: () => WM.open('settings') },
       { t: 'Параметры экрана', i: ICO.settings, f: () => WM.open('settings') },
-    ]);
+    ].filter(Boolean);
+    openCtx(e.clientX, e.clientY, ctxList);
   });
 }
 
