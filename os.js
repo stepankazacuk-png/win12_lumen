@@ -439,6 +439,51 @@ const Sound = (() => {
 let USER = 'Степан';
 let HOME = 'C:\\Users\\' + USER;
 
+function generateSpaceAudioWav(type) {
+  try {
+    const sampleRate = 22050;
+    const duration = type === 'orbit' ? 4.0 : 3.0;
+    const numSamples = Math.floor(sampleRate * duration);
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buffer);
+    function writeStr(offset, str) {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    }
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, numSamples * 2, true);
+    const notes = type === 'orbit' ? [220, 277.18, 329.63, 440] : [261.63, 329.63, 392.00, 523.25];
+    for (let i = 0; i < numSamples; i++) {
+      const t = i / sampleRate;
+      const noteIdx = Math.min(notes.length - 1, Math.floor(t / (duration / notes.length)));
+      const freq = notes[noteIdx];
+      const env = Math.sin((t / duration) * Math.PI);
+      const sample = (Math.sin(2 * Math.PI * freq * t) * 0.7 + Math.sin(2 * Math.PI * (freq * 1.5) * t) * 0.3) * env;
+      const s16 = Math.max(-1, Math.min(1, sample)) * 0.35 * 32767;
+      view.setInt16(44 + i * 2, s16, true);
+    }
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return 'data:audio/wav;base64,' + btoa(binary);
+  } catch (e) {
+    return '';
+  }
+}
+
 /* ============================================================================
    ВИРТУАЛЬНАЯ ФАЙЛОВАЯ СИСТЕМА
    ========================================================================== */
@@ -458,8 +503,8 @@ const VFS = (() => {
             'ember.png': { type: 'file', ext: 'png' },
           } },
           'Музыка': { type: 'dir', children: {
-            'signal.wav': { type: 'file', ext: 'wav' },
-            'orbit.wav': { type: 'file', ext: 'wav' },
+            'signal.wav': { type: 'file', ext: 'wav', content: generateSpaceAudioWav('signal') },
+            'orbit.wav': { type: 'file', ext: 'wav', content: generateSpaceAudioWav('orbit') },
           } },
           'Загрузки': { type: 'dir', children: {} },
           'Рабочий стол': { type: 'dir', children: {} },
@@ -664,8 +709,9 @@ function exportVfsFile(path) {
 
 function importDroppedFiles(files, targetDir, onDone) {
   if (!files || !files.length) return;
-  let remaining = files.length;
-  Array.from(files).forEach(file => {
+  const fileArr = Array.from(files);
+  let remaining = fileArr.length;
+  fileArr.forEach(file => {
     const reader = new FileReader();
     const isText = /^(text\/|application\/(json|javascript|xml|x-javascript))/i.test(file.type) ||
                    /\.(txt|md|json|js|html|css|py|sh|bat|csv|xml|log|ini|cfg)$/i.test(file.name);
@@ -680,8 +726,8 @@ function importDroppedFiles(files, targetDir, onDone) {
       remaining--;
       if (remaining === 0) {
         Sound.notif();
-        Notify('Импорт', 'Импортировано файлов: ' + files.length, ICO.folder, true);
-        if (typeof onDone === 'function') onDone();
+        Notify('Импорт', 'Импортировано файлов: ' + fileArr.length, ICO.folder, true);
+        if (typeof onDone === 'function') onDone(fileArr);
         if (typeof renderIcons === 'function') renderIcons();
       }
     };
@@ -695,9 +741,10 @@ function importDroppedFiles(files, targetDir, onDone) {
   });
 }
 
-function triggerPcUpload(targetDir, onDone) {
+function triggerPcUpload(targetDir, onDone, accept) {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.multiple = true; inp.style.display = 'none';
+  if (accept) inp.accept = accept;
   document.body.appendChild(inp);
   inp.onchange = () => {
     if (inp.files && inp.files.length) {
@@ -2507,7 +2554,15 @@ WM.register({
       Sound.click();
       const a = b.dataset.a;
       if (a === 'play') {
-        if (isLocal) {
+        if (currentTab === 'local' || isLocal) {
+          if (!isLocal || !localAudio) {
+            localTracks = getLocalTracks();
+            if (localTracks.length) {
+              const pick = localIdx >= 0 ? localIdx : 0;
+              playLocal(localTracks[pick].path, localTracks[pick].name);
+            }
+            return;
+          }
           if (localAudio) {
             if (localAudio.paused) {
               localAudio.play().then(() => markPlaying(true)).catch(() => markPlaying(false));
@@ -2522,7 +2577,7 @@ WM.register({
         if (playing) player.pauseVideo(); else player.playVideo();
       }
       if (a === 'next') {
-        if (isLocal) {
+        if (currentTab === 'local' || isLocal) {
           localTracks = getLocalTracks();
           if (localTracks.length) {
             const nextIdx = (localIdx + 1) % localTracks.length;
@@ -2533,7 +2588,7 @@ WM.register({
         select(idx + 1, true);
       }
       if (a === 'prev') {
-        if (isLocal) {
+        if (currentTab === 'local' || isLocal) {
           localTracks = getLocalTracks();
           if (localTracks.length) {
             const prevIdx = (localIdx - 1 + localTracks.length) % localTracks.length;
@@ -2570,11 +2625,15 @@ WM.register({
       const addBtn = e.target.closest('[data-a="upload"]');
       if (addBtn) {
         Sound.click();
-        triggerPcUpload(HOME + '\\Музыка', () => {
+        triggerPcUpload(HOME + '\\Музыка', (uploadedFiles) => {
           currentTab = 'local';
           $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
           renderList();
-        });
+          if (uploadedFiles && uploadedFiles.length) {
+            const first = uploadedFiles[0];
+            playLocal(HOME + '\\Музыка\\' + first.name, first.name);
+          }
+        }, 'audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.weba');
       }
     };
 
@@ -2585,11 +2644,12 @@ WM.register({
     rec.body.addEventListener('drop', e => {
       e.preventDefault();
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        importDroppedFiles(e.dataTransfer.files, HOME + '\\Музыка', () => {
+        const fileArr = Array.from(e.dataTransfer.files);
+        importDroppedFiles(fileArr, HOME + '\\Музыка', () => {
           currentTab = 'local';
           $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
           renderList();
-          const first = e.dataTransfer.files[0];
+          const first = fileArr[0];
           playLocal(HOME + '\\Музыка\\' + first.name, first.name);
         });
       }
@@ -2650,10 +2710,24 @@ WM.register({
       if (n && n.content && (n.content.startsWith('data:') || n.content.startsWith('blob:'))) {
         let audioSrc = n.content;
         if (audioSrc.startsWith('data:')) {
-          const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
-          const ext = (fullPath.split('.').pop() || '').toLowerCase();
-          if (mimeMap[ext]) {
-            audioSrc = audioSrc.replace(/^data:[^;]+(;base64,)/, 'data:' + mimeMap[ext] + '$1');
+          try {
+            const arr = audioSrc.split(',');
+            const mimeMatch = arr[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : 'audio/mpeg';
+            const bstr = atob(arr[1]);
+            let n_bytes = bstr.length;
+            const u8arr = new Uint8Array(n_bytes);
+            while (n_bytes--) {
+              u8arr[n_bytes] = bstr.charCodeAt(n_bytes);
+            }
+            const blob = new Blob([u8arr], { type: mime });
+            audioSrc = URL.createObjectURL(blob);
+          } catch (e) {
+            const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
+            const ext = (fullPath.split('.').pop() || '').toLowerCase();
+            if (mimeMap[ext]) {
+              audioSrc = audioSrc.replace(/^data:[^;]+(;base64,)/, 'data:' + mimeMap[ext] + '$1');
+            }
           }
         }
 
@@ -2695,26 +2769,9 @@ WM.register({
           markPlaying(false);
         }
       } else {
-        try {
-          const ac = new (window.AudioContext || window.webkitAudioContext)();
-          const freqs = fullPath.includes('orbit') ? [220, 277, 330, 440] : [261, 330, 392, 523];
-          freqs.forEach((f, fi) => {
-            const o = ac.createOscillator(); const g = ac.createGain();
-            o.type = 'sine'; o.frequency.value = f;
-            g.gain.setValueAtTime(0.001, ac.currentTime);
-            g.gain.linearRampToValueAtTime(0.04 * (State.volume / 100), ac.currentTime + 1.0 + fi * 0.2);
-            g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 6.0);
-            o.connect(g).connect(ac.destination);
-            o.start(); o.stop(ac.currentTime + 6.2);
-          });
-          curEl.textContent = '0:01'; durEl.textContent = '0:06'; seek.value = 200;
-          markPlaying(true);
-          if (vinyl) vinyl.classList.add('spinning');
-          setTimeout(() => {
-            markPlaying(false);
-            if (vinyl) vinyl.classList.remove('spinning');
-          }, 6000);
-        } catch (e) {}
+        const synthWav = generateSpaceAudioWav(fullPath.toLowerCase().includes('orbit') ? 'orbit' : 'signal');
+        if (n) n.content = synthWav;
+        playLocal(fullPath, nm);
       }
     }
 
@@ -3684,7 +3741,10 @@ WM.register({
         <button class="btn" data-br="fwd" title="Вперёд">${ICO.next}</button>
         <button class="btn" data-br="reload" title="Обновить">${ICO.refresh}</button>
         <button class="btn" data-br="home" title="Начальная страница">${ICO.globe}</button>
-        <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес сайта или запрос — поиск идёт через Google">
+        <div class="br-url-wrap">
+          <input class="fld br-url" id="brUrl" spellcheck="false" placeholder="Адрес сайта или запрос — поиск идёт через Google">
+          <button class="br-url-clear" data-br="clear" title="Очистить строку">✕</button>
+        </div>
         <button class="btn primary" data-br="go">Перейти</button>
         <button class="btn" data-br="ext" title="Открыть во внешней вкладке">${ICO.link || ICO.globe}</button>
       </div>
@@ -3712,6 +3772,9 @@ WM.register({
     const hostOut = $('#brHost', rec.body);
     const marks = $('.br-marks', rec.body);
     const ctx = canvas.getContext('2d');
+
+    urlIn.addEventListener('input', () => { urlIn._editing = true; });
+    urlIn.addEventListener('blur', () => { setTimeout(() => { urlIn._editing = false; }, 300); });
 
     marks.innerHTML = QUICK.map(b =>
       '<button class="br-mark" data-u="' + esc(b.u) + '" title="' + esc(b.u) + '">' + esc(b.t) + '</button>').join('');
@@ -3781,7 +3844,7 @@ WM.register({
           st.title = m.title || '';
           st.loading = !!m.loading;
           st.back = !!m.back; st.fwd = !!m.fwd;
-          if (document.activeElement !== urlIn) urlIn.value = niceUrl(st.url);
+          if (document.activeElement !== urlIn && !urlIn._editing) urlIn.value = niceUrl(st.url);
           hostOut.textContent = hostOf(st.url);
           markActive(st.url);
           status.textContent = st.loading ? 'Загрузка…' : 'Готово';
@@ -3872,7 +3935,7 @@ WM.register({
         return;
       }
       st.url = u;
-      if (document.activeElement !== urlIn) urlIn.value = niceUrl(u);
+      if (document.activeElement !== urlIn && !urlIn._editing) urlIn.value = niceUrl(u);
       hostOut.textContent = hostOf(u);
       markActive(u);
       status.textContent = 'Загрузка…';
@@ -3882,16 +3945,14 @@ WM.register({
       if (ytMatch) {
         targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1] + '?autoplay=1';
       } else if (/^https?:\/\/(?:www\.|m\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
-        const proxyBase = SERVER_INFO.origin || (location.protocol.startsWith('http') ? '' : ('http://127.0.0.1:' + (SERVER_INFO.port || 12000)));
-        targetSrc = proxyBase + '/__youtube';
+        targetSrc = '/__youtube';
       } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
         targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
       } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {
         targetSrc = 'https://www.google.com/?igu=1';
       } else {
-        const proxyBase = SERVER_INFO.origin || (location.protocol.startsWith('http') ? '' : ('http://127.0.0.1:' + (SERVER_INFO.port || 12000)));
         if (SERVER_INFO.ok) {
-          targetSrc = proxyBase + '/__proxy?u=' + encodeURIComponent(u);
+          targetSrc = '/__proxy?u=' + encodeURIComponent(u);
         }
       }
       try {
@@ -3964,9 +4025,12 @@ WM.register({
       return { button: 'right', mask: 2 };
     }
 
-    let dragging = false;
+    let dragging = false, lastMoveTime = 0, lastX = -1, lastY = -1;
     canvas.addEventListener('mousemove', e => {
+      const now = performance.now();
       const p = point(e);
+      if (!dragging && now - lastMoveTime < 35 && Math.abs(p.x - lastX) < 2 && Math.abs(p.y - lastY) < 2) return;
+      lastMoveTime = now; lastX = p.x; lastY = p.y;
       if (dragging) send({ t: 'mouse', type: 'mouseMoved', x: p.x, y: p.y, button: dragging, buttons: MOD.mask || 1, modifiers: mods(e) });
       else send({ t: 'mouse', type: 'mouseMoved', x: p.x, y: p.y, button: 'none', buttons: 0, modifiers: mods(e) });
     });
@@ -3992,18 +4056,30 @@ WM.register({
       send({ t: 'mouse', type: 'mousePressed', x: p.x, y: p.y, button: b.button, buttons: b.mask, clickCount: 2, modifiers: mods(e) });
       send({ t: 'mouse', type: 'mouseReleased', x: p.x, y: p.y, button: b.button, buttons: 0, clickCount: 2, modifiers: mods(e) });
     });
+    canvas.addEventListener('keydown', e => {
+      if (st.mode !== 'live' || !st.ready) return;
+      if (e.key === 'Escape' || e.key === 'F5' || e.key === 'F11' || e.key === 'F12') return;
+      if (e.key === 'Alt' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Meta') return;
+      e.preventDefault();
+      send({ t: 'key', type: 'keyDown', key: e.key, code: e.code, modifiers: mods(e) });
+    });
+    canvas.addEventListener('keyup', e => {
+      if (st.mode !== 'live' || !st.ready) return;
+      if (e.key === 'Alt' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Meta') return;
+      send({ t: 'key', type: 'keyUp', key: e.key, code: e.code, modifiers: mods(e) });
+    });
 
-    rec.api.keys = key => {
+    rec.api.keys = (key, ev) => {
       if (st.mode !== 'live' || !st.ready) return false;
-      if (key === 'Escape' || key === 'F5') return false;
+      if (key === 'Escape' || key === 'F5' || key === 'F11' || key === 'F12') return false;
       if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
-      send({ t: 'key', type: 'keyDown', key });
+      send({ t: 'key', type: 'keyDown', key, code: (ev && ev.code) || key, modifiers: ev ? mods(ev) : 0 });
       return true;
     };
-    rec.api.keyup = key => {
+    rec.api.keyup = (key, ev) => {
       if (st.mode !== 'live' || !st.ready) return false;
       if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
-      send({ t: 'key', type: 'keyUp', key });
+      send({ t: 'key', type: 'keyUp', key, code: (ev && ev.code) || key, modifiers: ev ? mods(ev) : 0 });
       return true;
     };
 
@@ -4015,7 +4091,17 @@ WM.register({
 
     /* ---------- адресная строка ---------- */
     urlIn.onkeydown = e => {
-      if (e.key === 'Enter') { e.preventDefault(); go(urlIn.value); urlIn.blur(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        urlIn._editing = false;
+        go(urlIn.value);
+        urlIn.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        urlIn.value = niceUrl(st.url);
+        urlIn._editing = false;
+        urlIn.blur();
+      }
     };
     urlIn.onfocus = () => { urlIn.select(); };
 
@@ -4023,7 +4109,13 @@ WM.register({
     $('.br-bar', rec.body).onclick = e => {
       const b = e.target.closest('[data-br]'); if (!b) return;
       const a = b.dataset.br;
-      if (a === 'go') go(urlIn.value);
+      if (a === 'clear') {
+        urlIn.value = '';
+        urlIn._editing = true;
+        urlIn.focus();
+        return;
+      }
+      if (a === 'go') { urlIn._editing = false; go(urlIn.value); }
       if (a === 'ext') {
         const u = normalize(urlIn.value || st.url);
         window.open(u === 'about:start' ? 'https://www.google.com/' : u, '_blank');
@@ -4767,6 +4859,13 @@ function setDeskScope() {
   VFS.mkdir(HOME);
   ['Документы', 'Изображения', 'Музыка', 'Загрузки', 'Рабочий стол', 'Корзина'].forEach(f => VFS.mkdir(HOME + '\\' + f));
   if (typeof VFS !== 'undefined' && VFS.loadUserVfs) VFS.loadUserVfs();
+  const mus = VFS.node(HOME + '\\Музыка');
+  if (mus && mus.children) {
+    if (!mus.children['signal.wav']) VFS.write(HOME + '\\Музыка\\signal.wav', generateSpaceAudioWav('signal'), 'wav');
+    else if (!mus.children['signal.wav'].content) mus.children['signal.wav'].content = generateSpaceAudioWav('signal');
+    if (!mus.children['orbit.wav']) VFS.write(HOME + '\\Музыка\\orbit.wav', generateSpaceAudioWav('orbit'), 'wav');
+    else if (!mus.children['orbit.wav'].content) mus.children['orbit.wav'].content = generateSpaceAudioWav('orbit');
+  }
   loadDeskItems();
   loadIconPositions();
 }
@@ -5631,7 +5730,7 @@ function initKeys() {
     // Клавиши отдаём активному окну, если оно их запрашивает. Так игра
     // получает стрелки раньше, чем система успеет переключить окно.
     const aw = activeWin();
-    if (!typing && aw && aw.api.keys && aw.api.keys(e.key)) { e.preventDefault(); return; }
+    if (!typing && aw && aw.api.keys && aw.api.keys(e.key, e)) { e.preventDefault(); return; }
 
     if (e.ctrlKey && e.altKey && k === 't') { e.preventDefault(); WM.open('terminal'); return; }
     if (e.key === 'Escape') { closeCtx(); Quick.close(); Widgets.close(); Spot.close(); StartMenu.closeMenu(); return; }
@@ -5645,7 +5744,7 @@ function initKeys() {
       if (altTabHud && altTabHud.classList.contains('on')) hideAltTabHud();
     }
     const aw = activeWin();
-    if (aw && aw.api.keyup) aw.api.keyup(e.key);
+    if (aw && aw.api.keyup) aw.api.keyup(e.key, e);
   });
   window.addEventListener('blur', () => {
     meta = false;

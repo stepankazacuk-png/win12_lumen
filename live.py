@@ -415,10 +415,11 @@ class Chromium:
             args = [
                 self.path, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
                 '--allow-insecure-localhost',
+                '--disable-web-security',
                 '--hide-scrollbars', '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
-                '--disable-features=Translate,BlockInsecurePrivateNetworkRequests',
+                '--disable-features=Translate,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults',
                 '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
                 '--autoplay-policy=no-user-gesture-required',
                 '--no-first-run', '--no-default-browser-check', '--disable-sync',
@@ -656,18 +657,21 @@ class Session(threading.Thread):
                 rest = max(rest, 0.25)
             if rest < 0:
                 rest = 0
-            try:
-                if not self.ws.has_data(rest):
-                    continue
-                op, payload = self.ws.read_message()
-            except WSError:
-                break
-            if op != 0x1:
-                continue
-            try:
-                self._message(json.loads(payload.decode('utf-8')))
-            except Exception:
-                pass
+
+            # Читаем все накопившиеся сообщения клиента без задержек
+            while True:
+                try:
+                    if not self.ws.has_data(rest):
+                        break
+                    rest = 0
+                    op, payload = self.ws.read_message()
+                    if op == 0x1:
+                        self._message(json.loads(payload.decode('utf-8')))
+                except WSError:
+                    self.alive = False
+                    break
+                except Exception:
+                    pass
 
     def _on_event(self, msg):
         """Разбор событий Chromium.
@@ -824,8 +828,8 @@ class Session(threading.Thread):
             params['buttons'] = m.get('buttons', 0)
             params['clickCount'] = m.get('clickCount', 1)
         try:
-            self.cdp.call('Input.dispatchMouseEvent', params, session=self.sid, timeout=8)
-        except WSError:
+            self.cdp.send('Input.dispatchMouseEvent', params, session=self.sid)
+        except Exception:
             pass
 
     KEYS = {
@@ -838,34 +842,59 @@ class Session(threading.Thread):
     }
 
     def _key(self, m):
-        kind = m.get('type')
+        kind = m.get('type') or 'keyDown'
         key = m.get('key') or ''
         code = m.get('code') or key
         mods = int(m.get('modifiers') or 0)
-        params = {'type': kind, 'key': key, 'code': code, 'modifiers': mods}
-        if key in ('Alt', 'Control', 'Shift', 'Meta'):
-            params['windowsVirtualKeyCode'] = {'Alt': 18, 'Control': 17,
-                                               'Shift': 16, 'Meta': 91}[key]
-            params['nativeVirtualKeyCode'] = params['windowsVirtualKeyCode']
-        elif key in self.KEYS:
-            vk, cd = self.KEYS[key]
-            params['windowsVirtualKeyCode'] = vk
-            params['nativeVirtualKeyCode'] = vk
-            params['code'] = cd
-            if kind == 'keyDown' and key in ('Enter', 'Tab', ' '):
-                params['text'] = {'Enter': '\r', 'Tab': '\t', ' ': ' '}[key]
-                params['unmodifiedText'] = params['text']
-        elif len(key) == 1:
-            params['windowsVirtualKeyCode'] = ord(key.upper()) if key.isascii() else 0
-            params['nativeVirtualKeyCode'] = params['windowsVirtualKeyCode']
-            if kind == 'keyDown':
-                params['text'] = key
-                params['unmodifiedText'] = key
-        else:
+
+        if key == 'Backspace':
+            self.cdp.send('Input.dispatchKeyEvent', {
+                'type': 'rawKeyDown', 'key': 'Backspace', 'code': 'Backspace',
+                'windowsVirtualKeyCode': 8, 'nativeVirtualKeyCode': 8, 'modifiers': mods
+            }, session=self.sid)
+            self.cdp.send('Input.dispatchKeyEvent', {
+                'type': 'keyUp', 'key': 'Backspace', 'code': 'Backspace',
+                'windowsVirtualKeyCode': 8, 'nativeVirtualKeyCode': 8, 'modifiers': mods
+            }, session=self.sid)
             return
+
+        if key in ('Alt', 'Control', 'Shift', 'Meta'):
+            vk = {'Alt': 18, 'Control': 17, 'Shift': 16, 'Meta': 91}[key]
+            self.cdp.send('Input.dispatchKeyEvent', {
+                'type': kind, 'key': key, 'code': code, 'modifiers': mods,
+                'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+            }, session=self.sid)
+            return
+
+        if key in self.KEYS:
+            vk, cd = self.KEYS[key]
+            self.cdp.send('Input.dispatchKeyEvent', {
+                'type': 'rawKeyDown', 'key': key, 'code': cd, 'modifiers': mods,
+                'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+            }, session=self.sid)
+            if key in ('Enter', 'Tab', ' '):
+                t = {'Enter': '\r', 'Tab': '\t', ' ': ' '}[key]
+                self.cdp.send('Input.dispatchKeyEvent', {
+                    'type': 'char', 'key': key, 'code': cd, 'modifiers': mods,
+                    'text': t, 'unmodifiedText': t,
+                    'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+                }, session=self.sid)
+            self.cdp.send('Input.dispatchKeyEvent', {
+                'type': 'keyUp', 'key': key, 'code': cd, 'modifiers': mods,
+                'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+            }, session=self.sid)
+            return
+
+        if len(key) == 1:
+            if kind == 'keyDown':
+                self.cdp.send('Input.insertText', {'text': key}, session=self.sid)
+            return
+
         try:
-            self.cdp.call('Input.dispatchKeyEvent', params, session=self.sid, timeout=8)
-        except WSError:
+            self.cdp.send('Input.dispatchKeyEvent', {
+                'type': kind, 'key': key, 'code': code, 'modifiers': mods
+            }, session=self.sid)
+        except Exception:
             pass
 
 
