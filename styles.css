@@ -218,7 +218,7 @@ html[data-theme="light"] .wall .vig{background:radial-gradient(130% 100% at 50% 
 #icons{position:absolute;inset:16px 16px calc(var(--tb-h) + 22px) 16px;overflow:hidden;pointer-events:none}
 .dicon{position:absolute;width:88px;padding:8px 4px 6px;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;gap:6px;
   border:1px solid transparent;cursor:pointer;pointer-events:auto;user-select:none;touch-action:none;
-  transition:background .18s,border-color .18s}
+  transition:left .15s ease-out, top .15s ease-out, background .18s, border-color .18s}
 .dicon:hover{background:rgba(255,255,255,.1);border-color:var(--stroke-2);backdrop-filter:blur(8px)}
 .dicon:active{transform:scale(.96)}
 .dicon.sel{background:rgba(92,200,255,.22);border-color:rgba(92,200,255,.45)}

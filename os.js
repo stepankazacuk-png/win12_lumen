@@ -4561,6 +4561,7 @@ function saveIconPositions() {
 }
 function resetIconPositions() {
   iconPositions = {};
+  if (typeof occupiedSlots !== 'undefined' && occupiedSlots.clear) occupiedSlots.clear();
   try { localStorage.removeItem('lumen.iconPos.' + USER); } catch (e) {}
 }
 
@@ -4619,6 +4620,8 @@ function createDeskFile() {
 }
 function removeDeskItem(name) {
   deskItems = deskItems.filter(it => it.name !== name);
+  delete iconPositions['user:' + name];
+  saveIconPositions();
   saveDeskItems(); renderIcons();
 }
 function renameDeskItem(oldName, newName) {
@@ -4636,6 +4639,11 @@ function renameDeskItem(oldName, newName) {
   }
   VFS.rm(from, true);
   it.name = newName;
+  if (iconPositions['user:' + oldName]) {
+    iconPositions['user:' + newName] = iconPositions['user:' + oldName];
+    delete iconPositions['user:' + oldName];
+    saveIconPositions();
+  }
   saveDeskItems(); renderIcons();
   Sound.notif();
   return true;
@@ -4647,6 +4655,64 @@ function deepCopy(from, to) {
     if (c.type === 'dir') { to.children[k] = { type: 'dir', children: {} }; deepCopy(c, to.children[k]); }
     else to.children[k] = { type: 'file', ext: c.ext, content: c.content };
   });
+}
+
+const DESK_GRID_X = 96;
+const DESK_GRID_Y = 104;
+let occupiedSlots = new Map();
+
+function getGridMetrics() {
+  const isSmallMobile = window.innerWidth <= 400;
+  const isMobile = window.innerWidth <= 560;
+  const stepX = isSmallMobile ? 72 : (isMobile ? 80 : DESK_GRID_X);
+  const stepY = isSmallMobile ? 80 : (isMobile ? 88 : DESK_GRID_Y);
+  const host = $('#icons');
+  const hostRect = host ? host.getBoundingClientRect() : null;
+  const availW = (hostRect && hostRect.width > 50) ? hostRect.width : (window.innerWidth - (isMobile ? 16 : 32));
+  const availH = (hostRect && hostRect.height > 50) ? hostRect.height : (window.innerHeight - (isMobile ? 70 : 110));
+  const maxCols = Math.max(1, Math.floor(availW / stepX));
+  const maxRows = Math.max(1, Math.floor(availH / stepY));
+  return { stepX, stepY, maxCols, maxRows, availW, availH };
+}
+
+function findFreeSlot(targetCol, targetRow, maxCols, maxRows, occupied) {
+  const targetKey = targetCol + ',' + targetRow;
+  if (!occupied.has(targetKey)) {
+    return { col: targetCol, row: targetRow };
+  }
+  let best = null;
+  let bestDist = Infinity;
+  for (let c = 0; c < maxCols; c++) {
+    for (let r = 0; r < maxRows; r++) {
+      const k = c + ',' + r;
+      if (!occupied.has(k)) {
+        const dc = c - targetCol;
+        const dr = r - targetRow;
+        const dist = dc * dc + dr * dr;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { col: c, row: r };
+        } else if (dist === bestDist && best) {
+          if (Math.abs(r - targetRow) < Math.abs(best.row - targetRow) ||
+             (Math.abs(r - targetRow) === Math.abs(best.row - targetRow) && c < best.col)) {
+            best = { col: c, row: r };
+          }
+        }
+      }
+    }
+  }
+  if (best) return best;
+  let col = maxCols;
+  while (col < 100) {
+    for (let r = 0; r < maxRows; r++) {
+      const k = col + ',' + r;
+      if (!occupied.has(k)) {
+        return { col: col, row: r };
+      }
+    }
+    col++;
+  }
+  return { col: targetCol, row: targetRow };
 }
 
 function makeIconDraggable(n, key, host) {
@@ -4676,9 +4742,9 @@ function makeIconDraggable(n, key, host) {
       n.style.zIndex = '999';
     }
     if (moved) {
-      const hostRect = host.getBoundingClientRect();
-      const maxW = Math.max(0, hostRect.width - (n.offsetWidth || 88));
-      const maxH = Math.max(0, hostRect.height - (n.offsetHeight || 90));
+      const { availW, availH } = getGridMetrics();
+      const maxW = Math.max(0, availW - (n.offsetWidth || 88));
+      const maxH = Math.max(0, availH - (n.offsetHeight || 90));
       const newLeft = Math.max(0, Math.min(maxW, origLeft + dx));
       const newTop = Math.max(0, Math.min(maxH, origTop + dy));
       n.style.left = Math.round(newLeft) + 'px';
@@ -4693,16 +4759,28 @@ function makeIconDraggable(n, key, host) {
     n.style.zIndex = '';
     if (moved) {
       n.classList.remove('dragging');
-      const hostRect = host.getBoundingClientRect();
-      const maxW = Math.max(0, hostRect.width - (n.offsetWidth || 88));
-      const maxH = Math.max(0, hostRect.height - (n.offsetHeight || 90));
+      const { stepX, stepY, maxCols, maxRows } = getGridMetrics();
       const curLeft = parseFloat(n.style.left) || 0;
       const curTop = parseFloat(n.style.top) || 0;
-      const snapLeft = Math.max(0, Math.min(maxW, Math.round(curLeft / 16) * 16));
-      const snapTop = Math.max(0, Math.min(maxH, Math.round(curTop / 16) * 16));
+
+      const targetCol = Math.max(0, Math.min(maxCols - 1, Math.round(curLeft / stepX)));
+      const targetRow = Math.max(0, Math.min(maxRows - 1, Math.round(curTop / stepY)));
+
+      // Освобождаем прежний слот этого значка
+      for (const [k, occupant] of occupiedSlots.entries()) {
+        if (occupant === key) occupiedSlots.delete(k);
+      }
+
+      // Находим ближайший свободный слот без наложения
+      const slot = findFreeSlot(targetCol, targetRow, maxCols, maxRows, occupiedSlots);
+      occupiedSlots.set(slot.col + ',' + slot.row, key);
+
+      const snapLeft = slot.col * stepX;
+      const snapTop = slot.row * stepY;
       n.style.left = snapLeft + 'px';
       n.style.top = snapTop + 'px';
-      iconPositions[key] = { x: snapLeft, y: snapTop };
+
+      iconPositions[key] = { col: slot.col, row: slot.row, x: snapLeft, y: snapTop };
       saveIconPositions();
       n._dragged = true;
       setTimeout(() => { n._dragged = false; }, 200);
@@ -4719,85 +4797,139 @@ function renderIcons() {
   host.innerHTML = '';
   loadIconPositions();
 
-  const hostRect = host.getBoundingClientRect();
-  const availH = (hostRect && hostRect.height > 100) ? hostRect.height : (window.innerHeight - 110);
-  const stepX = 96, stepY = 100;
-  const maxRows = Math.max(1, Math.floor(availH / stepY));
-  let defaultIdx = 0;
+  const { stepX, stepY, maxCols, maxRows } = getGridMetrics();
+  occupiedSlots = new Map();
 
-  const assignPos = (n, key) => {
-    let p = iconPositions[key];
-    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
-      const maxW = Math.max(0, (hostRect.width || window.innerWidth) - 88);
-      const maxH = Math.max(0, availH - 90);
-      n.style.left = Math.min(p.x, maxW) + 'px';
-      n.style.top = Math.min(p.y, maxH) + 'px';
-    } else {
-      const col = Math.floor(defaultIdx / maxRows);
-      const row = defaultIdx % maxRows;
-      n.style.left = (col * stepX) + 'px';
-      n.style.top = (row * stepY) + 'px';
-      defaultIdx++;
-    }
-    makeIconDraggable(n, key, host);
-  };
-
-  // Созданные пользователем папки и файлы — идут первыми
+  // Собираем все ярлыки: сначала созданные пользователем (deskItems), затем системные (DESK)
+  const items = [];
   deskItems.forEach(it => {
-    const isDir = it.type === 'dir';
-    const ext = (it.ext || '').toLowerCase();
-    const ico = isDir ? ICO.folder : (ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ICO.png : (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext) ? ICO.music : ICO.file)));
-    const n = el('div', 'dicon', '<span class="ico">' + ico + '</span><span>' + esc(it.name) + '</span>');
-    const open = () => {
-      if (isDir) return WM.open('explorer', DESK_DIR + '\\' + it.name);
-      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return WM.open('viewer', { path: DESK_DIR + '\\' + it.name });
-      if (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext)) return WM.open('music', { path: DESK_DIR + '\\' + it.name, name: it.name });
-      return WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
-    };
-    n.ondblclick = () => { if (n._dragged) return; Sound.click(); open(); };
-    n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
-    n.oncontextmenu = e => {
-      e.preventDefault(); e.stopPropagation(); n.onclick();
-      const ctxItems = [
-        { t: 'Открыть', i: ICO.exe, f: open },
-        { t: 'Переименовать', i: ICO.ren, f: () => {
-            const nn = prompt('Новое имя:', it.name);
-            if (nn && nn !== it.name) renameDeskItem(it.name, nn);
-          } },
-      ];
-      if (!isDir) ctxItems.push({ t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(DESK_DIR + '\\' + it.name) });
-      ctxItems.push(
-        { sep: true },
-        { t: 'Удалить', i: ICO.trash, f: () => {
-            VFS.rm(DESK_DIR + '\\' + it.name, true);
-            removeDeskItem(it.name);
-            Sound.notif();
-            Notify('Рабочий стол', 'Удалено: ' + it.name, ICO.trash, true);
-          } },
-        { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства',
-            it.name + (isDir ? ' — папка' : ' — файл (' + (it.ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
-      );
-      openCtx(e.clientX, e.clientY, ctxItems);
-    };
-    assignPos(n, 'user:' + it.name);
-    host.appendChild(n);
+    items.push({
+      key: 'user:' + it.name,
+      isUser: true,
+      it: it
+    });
+  });
+  DESK.forEach(d => {
+    items.push({
+      key: 'sys:' + d.t,
+      isUser: false,
+      d: d
+    });
   });
 
-  DESK.forEach(d => {
-    const n = el('div', 'dicon', '<span class="ico">' + d.i + '</span><span>' + esc(d.t) + '</span>');
-    n.ondblclick = () => { if (n._dragged) return; Sound.click(); d.f(); };
-    n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
-    n.oncontextmenu = e => {
-      e.preventDefault(); e.stopPropagation(); n.onclick();
-      openCtx(e.clientX, e.clientY, [
-        { t: 'Открыть', i: ICO.exe, f: d.f },
-        { sep: true },
-        { t: 'Создать папку', i: ICO.plus, f: createDeskFolder },
-        { t: 'Свойства', i: ICO.settings, f: () => WM.open('settings') },
-      ]);
+  // Проход 1: регистрируем ярлыки с сохранёнными позициями, если слот свободен
+  items.forEach(entry => {
+    const p = iconPositions[entry.key];
+    if (p) {
+      let c = (typeof p.col === 'number') ? p.col : Math.round((p.x || 0) / stepX);
+      let r = (typeof p.row === 'number') ? p.row : Math.round((p.y || 0) / stepY);
+      c = Math.max(0, c);
+      r = Math.max(0, r);
+      const slotKey = c + ',' + r;
+      if (!occupiedSlots.has(slotKey)) {
+        occupiedSlots.set(slotKey, entry.key);
+        entry.col = c;
+        entry.row = r;
+      }
+    }
+  });
+
+  // Проход 2: для ярлыков без слота находим свободные слоты сверху вниз по колонкам
+  let scanCol = 0, scanRow = 0;
+  const nextFreeSlot = () => {
+    while (scanCol < 1000) {
+      const k = scanCol + ',' + scanRow;
+      const curC = scanCol, curR = scanRow;
+      scanRow++;
+      if (scanRow >= maxRows) {
+        scanRow = 0;
+        scanCol++;
+      }
+      if (!occupiedSlots.has(k)) {
+        return { col: curC, row: curR };
+      }
+    }
+    return { col: 0, row: 0 };
+  };
+
+  items.forEach(entry => {
+    if (entry.col === undefined || entry.row === undefined) {
+      const slot = nextFreeSlot();
+      entry.col = slot.col;
+      entry.row = slot.row;
+      occupiedSlots.set(entry.col + ',' + entry.row, entry.key);
+    }
+    iconPositions[entry.key] = {
+      col: entry.col,
+      row: entry.row,
+      x: entry.col * stepX,
+      y: entry.row * stepY
     };
-    assignPos(n, 'sys:' + d.t);
-    host.appendChild(n);
+  });
+  saveIconPositions();
+
+  // Проход 3: рендеринг узлов
+  items.forEach(entry => {
+    if (entry.isUser) {
+      const it = entry.it;
+      const isDir = it.type === 'dir';
+      const ext = (it.ext || '').toLowerCase();
+      const ico = isDir ? ICO.folder : (ext === 'txt' ? ICO.txt : (['png', 'jpg', 'jpeg', 'webp'].includes(ext) ? ICO.png : (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext) ? ICO.music : ICO.file)));
+      const n = el('div', 'dicon', '<span class="ico">' + ico + '</span><span>' + esc(it.name) + '</span>');
+      const open = () => {
+        if (isDir) return WM.open('explorer', DESK_DIR + '\\' + it.name);
+        if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return WM.open('viewer', { path: DESK_DIR + '\\' + it.name });
+        if (['wav', 'mp3', 'ogg', 'm4a', 'flac', 'aac', 'mid', 'weba'].includes(ext)) return WM.open('music', { path: DESK_DIR + '\\' + it.name, name: it.name });
+        return WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
+      };
+      n.ondblclick = () => { if (n._dragged) return; Sound.click(); open(); };
+      n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+      n.oncontextmenu = e => {
+        e.preventDefault(); e.stopPropagation(); n.onclick();
+        const ctxItems = [
+          { t: 'Открыть', i: ICO.exe, f: open },
+          { t: 'Переименовать', i: ICO.ren, f: () => {
+              const nn = prompt('Новое имя:', it.name);
+              if (nn && nn !== it.name) renameDeskItem(it.name, nn);
+            } },
+        ];
+        if (!isDir) ctxItems.push({ t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(DESK_DIR + '\\' + it.name) });
+        ctxItems.push(
+          { sep: true },
+          { t: 'Удалить', i: ICO.trash, f: () => {
+              VFS.rm(DESK_DIR + '\\' + it.name, true);
+              removeDeskItem(it.name);
+              Sound.notif();
+              Notify('Рабочий стол', 'Удалено: ' + it.name, ICO.trash, true);
+            } },
+          { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства',
+              it.name + (isDir ? ' — папка' : ' — файл (' + (it.ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
+        );
+        openCtx(e.clientX, e.clientY, ctxItems);
+      };
+      n.style.left = (entry.col * stepX) + 'px';
+      n.style.top = (entry.row * stepY) + 'px';
+      makeIconDraggable(n, entry.key, host);
+      host.appendChild(n);
+    } else {
+      const d = entry.d;
+      const n = el('div', 'dicon', '<span class="ico">' + d.i + '</span><span>' + esc(d.t) + '</span>');
+      n.ondblclick = () => { if (n._dragged) return; Sound.click(); d.f(); };
+      n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+      n.oncontextmenu = e => {
+        e.preventDefault(); e.stopPropagation(); n.onclick();
+        openCtx(e.clientX, e.clientY, [
+          { t: 'Открыть', i: ICO.exe, f: d.f },
+          { sep: true },
+          { t: 'Создать папку', i: ICO.plus, f: createDeskFolder },
+          { t: 'Свойства', i: ICO.settings, f: () => WM.open('settings') },
+        ]);
+      };
+      n.style.left = (entry.col * stepX) + 'px';
+      n.style.top = (entry.row * stepY) + 'px';
+      makeIconDraggable(n, entry.key, host);
+      host.appendChild(n);
+    }
   });
 }
 
@@ -5783,6 +5915,7 @@ function initResponsive() {
     lastW = window.innerWidth; lastH = window.innerHeight;
     WM.relayout();
     renderTaskbar();
+    renderIcons();
   };
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', () => setTimeout(onResize, 260));
