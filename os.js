@@ -3496,7 +3496,7 @@ WM.register({
       <div class="br-marks"></div>
       <div class="br-stage">
         <canvas class="br-canvas" id="brCanvas" tabindex="0"></canvas>
-        <iframe class="br-frame" id="brFrame" style="display:none" allow="fullscreen; autoplay; encrypted-media"></iframe>
+        <iframe class="br-frame" id="brFrame" style="display:none" referrerpolicy="no-referrer-when-downgrade" allow="fullscreen; autoplay; encrypted-media"></iframe>
         <div class="br-state" id="brState"><span class="br-spin"></span><span id="brStateText">Подключение к серверу…</span></div>
       </div>
       <div class="br-foot">
@@ -3653,7 +3653,7 @@ WM.register({
         '<div class="grid">' +
         '<a class="card" href="https://www.google.com/?igu=1"><span class="badge">🌐</span>Google</a>' +
         '<a class="card" href="https://ru.wikipedia.org/"><span class="badge">📚</span>Википедия</a>' +
-        '<a class="card" href="https://www.youtube-nocookie.com/embed"><span class="badge">▶️</span>YouTube</a>' +
+        '<a class="card" href="https://www.youtube.com/"><span class="badge">▶️</span>YouTube</a>' +
         '<a class="card" href="https://rutube.ru/"><span class="badge">📺</span>RuTube</a>' +
         '<a class="card" href="https://github.com/"><span class="badge">🐙</span>GitHub</a>' +
         '<a class="card" href="https://web.archive.org/"><span class="badge">🏛️</span>Архив</a>' +
@@ -3683,11 +3683,12 @@ WM.register({
       status.textContent = 'Загрузка…';
 
       let targetSrc = u;
-      const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/i);
+      const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i);
       if (ytMatch) {
-        targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1];
-      } else if (/^https?:\/\/(?:www\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
-        targetSrc = 'https://www.youtube-nocookie.com/embed?listType=search&list=popular';
+        targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1] + '?autoplay=1';
+      } else if (/^https?:\/\/(?:www\.|m\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
+        const proxyBase = SERVER_INFO.origin || (location.protocol.startsWith('http') ? '' : ('http://127.0.0.1:' + (SERVER_INFO.port || 12000)));
+        targetSrc = proxyBase + '/__youtube';
       } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
         targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
       } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {

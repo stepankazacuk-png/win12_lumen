@@ -86,17 +86,193 @@ BOOTSTRAP = """<script>
 </script>"""
 
 
+YOUTUBE_HTML = r"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer-when-downgrade">
+<title>YouTube — Люмен</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f0f0f;color:#f1f1f1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding-bottom:40px}
+  header{position:sticky;top:0;z-index:100;background:rgba(15,15,15,0.96);backdrop-filter:blur(10px);border-bottom:1px solid #272727;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:#fff;text-decoration:none;letter-spacing:-0.5px}
+  .logo-icon{width:28px;height:20px;background:#ff0000;border-radius:6px;display:flex;align-items:center;justify-content:center}
+  .logo-icon svg{width:12px;height:12px;fill:#fff;margin-left:2px}
+  .search-wrap{display:flex;align-items:center;flex:1;max-width:600px;margin:0 12px}
+  .search-box{display:flex;width:100%;border:1px solid #303030;border-radius:40px;overflow:hidden;background:#121212}
+  .search-box input{flex:1;background:transparent;border:none;padding:10px 16px;color:#fff;font-size:14px;outline:none}
+  .search-box button{background:#222;border:none;border-left:1px solid #303030;color:#aaa;padding:0 18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
+  .search-box button:hover{background:#333;color:#fff}
+  .extra-links{display:flex;gap:8px}
+  .rutube-btn{background:#1e293b;color:#38bdf8;border:1px solid #334155;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:6px;transition:all .2s}
+  .rutube-btn:hover{background:#0284c7;color:#fff}
+  
+  .container{max-width:1280px;margin:0 auto;padding:20px}
+  .player-section{background:#000;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.6);margin-bottom:24px;border:1px solid #272727}
+  .player-box{position:relative;width:100%;padding-top:56.25%}
+  .player-box iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
+  .player-meta{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:#181818}
+  .current-title{font-size:16px;font-weight:600;color:#fff}
+  .status-badge{font-size:12px;color:#22c55e;display:flex;align-items:center;gap:6px;background:rgba(34,197,94,0.12);padding:4px 10px;border-radius:12px}
+
+  .chips{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;margin-bottom:20px}
+  .chip{background:#272727;color:#f1f1f1;border:none;padding:8px 16px;border-radius:18px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .2s}
+  .chip:hover,.chip.active{background:#fff;color:#000}
+
+  .section-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:20px}
+  .card{background:#181818;border-radius:12px;overflow:hidden;cursor:pointer;border:1px solid #262626;transition:transform .18s,border-color .18s,box-shadow .18s;display:flex;flex-direction:column}
+  .card:hover{transform:translateY(-4px);border-color:#555;box-shadow:0 10px 24px rgba(0,0,0,0.5)}
+  .card-thumb{position:relative;width:100%;padding-top:56.25%;background:#000}
+  .card-thumb img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
+  .duration{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px}
+  .card-body{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}
+  .card-title{font-size:14px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .card-channel{font-size:12px;color:#aaa}
+</style>
+</head>
+<body>
+  <header>
+    <a href="/__youtube" class="logo">
+      <div class="logo-icon"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"></polygon></svg></div>
+      <span>YouTube</span>
+    </a>
+    <div class="search-wrap">
+      <form class="search-box" id="searchForm" onsubmit="event.preventDefault();doSearch();">
+        <input type="text" id="searchInput" placeholder="Поиск на YouTube или ссылка на ролик..." value="{{QUERY}}">
+        <button type="submit" title="Найти">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </button>
+      </form>
+    </div>
+    <div class="extra-links">
+      <a href="https://rutube.ru/" class="rutube-btn">📺 RuTube</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="player-section">
+      <div class="player-box">
+        <iframe id="mainPlayer" src="https://www.youtube-nocookie.com/embed/{{VIDEO_ID}}?autoplay=1"
+                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+      </div>
+      <div class="player-meta">
+        <span class="current-title" id="playerTitle">Сейчас играет</span>
+        <span class="status-badge"><span style="width:6px;height:6px;border-radius:50%;background:#22c55e"></span>Стабильный плеер</span>
+      </div>
+    </div>
+
+    <div class="chips">
+      <button class="chip active" onclick="filterCat('all')">Все</button>
+      <button class="chip" onclick="filterCat('music')">Музыка</button>
+      <button class="chip" onclick="filterCat('trends')">Тренды</button>
+      <button class="chip" onclick="filterCat('relax')">Природа & Релакс</button>
+      <button class="chip" onclick="filterCat('games')">Игры & Фильмы</button>
+    </div>
+
+    <div class="section-title">🔥 Популярные видео</div>
+    <div class="grid" id="videoGrid"></div>
+  </div>
+
+<script>
+const VIDEOS = [
+  { id: 'dQw4w9WgXcQ', t: 'Rick Astley - Never Gonna Give You Up', ch: 'Rick Astley', d: '3:33', c: 'music' },
+  { id: 'jfKfPfyJRdk', t: 'Lofi Hip Hop Radio - Beats to Relax/Study to', ch: 'Lofi Girl', d: 'LIVE', c: 'music' },
+  { id: 'fJ9rUzIMcZQ', t: 'Queen - Bohemian Rhapsody (Official Video)', ch: 'Queen Official', d: '5:59', c: 'music' },
+  { id: 'UDVtMYqUAyw', t: 'Interstellar Main Theme - Hans Zimmer', ch: 'Hans Zimmer', d: '4:56', c: 'music' },
+  { id: 'LXb3EKWsInQ', t: 'Campfire by the River 4K - Relaxing Nature', ch: 'Calm Sound', d: '3:00:00', c: 'relax' },
+  { id: 'aqz-KE-bpKQ', t: 'Big Buck Bunny 4K 60fps Ultra HD', ch: 'Blender Studio', d: '10:34', c: 'trends' },
+  { id: 'N_x_jRZZtps', t: 'Minecraft - 15th Anniversary Official Animation', ch: 'Minecraft', d: '1:45', c: 'games' },
+  { id: '8X2kIfS6fb8', t: 'Cyberpunk 2077 - Phantom Liberty Official Trailer', ch: 'Cyberpunk 2077', d: '2:31', c: 'games' },
+  { id: 'L_LUpnjgPso', t: 'Earth from Space - 4K ISS Live Stream', ch: 'Space Videos', d: 'LIVE', c: 'relax' },
+  { id: '2Vv-BfVoq4g', t: 'Ed Sheeran - Perfect (Official Music Video)', ch: 'Ed Sheeran', d: '4:39', c: 'music' },
+  { id: 'kJQP7kiw5Fk', t: 'Luis Fonsi - Despacito ft. Daddy Yankee', ch: 'Luis Fonsi', d: '4:41', c: 'music' },
+  { id: 'hTWKbfoikeg', t: 'Nirvana - Smells Like Teen Spirit', ch: 'Nirvana', d: '4:38', c: 'music' }
+];
+
+let curCat = 'all';
+
+function play(id, title) {
+  const p = document.getElementById('mainPlayer');
+  p.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
+  document.getElementById('playerTitle').textContent = title || 'Воспроизведение';
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('v', id);
+    history.replaceState(null, '', url.pathname + url.search);
+  } catch(e) {}
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderVideos(list) {
+  const g = document.getElementById('videoGrid');
+  g.innerHTML = '';
+  list.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.onclick = () => play(v.id, v.t);
+    card.innerHTML = 
+      '<div class="card-thumb">' +
+        '<img src="https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg" alt="" loading="lazy">' +
+        '<span class="duration">' + v.d + '</span>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="card-title">' + v.t + '</div>' +
+        '<div class="card-channel">' + v.ch + '</div>' +
+      '</div>';
+    g.appendChild(card);
+  });
+}
+
+function filterCat(c) {
+  curCat = c;
+  document.querySelectorAll('.chip').forEach(b => {
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(c) || (c==='all' && b.textContent==='Все'));
+  });
+  if (c === 'all') renderVideos(VIDEOS);
+  else renderVideos(VIDEOS.filter(v => v.c === c));
+}
+
+function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  const m = q.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|v\/|embed\/))([\w-]{6,})/);
+  if (m) {
+    play(m[1], 'Видео из ссылки');
+    return;
+  }
+  const filtered = VIDEOS.filter(v => v.t.toLowerCase().includes(q.toLowerCase()) || v.ch.toLowerCase().includes(q.toLowerCase()));
+  if (filtered.length) {
+    renderVideos(filtered);
+    play(filtered[0].id, filtered[0].t);
+  } else {
+    location.href = 'https://www.google.com/search?q=site:youtube.com+' + encodeURIComponent(q) + '&igu=1';
+  }
+}
+
+const initialVid = '{{VIDEO_ID}}';
+const found = VIDEOS.find(v => v.id === initialVid);
+if (found) document.getElementById('playerTitle').textContent = found.t;
+renderVideos(VIDEOS);
+</script>
+</body>
+</html>"""
+
+
 def youtube_embed(url):
     """Ссылка на ролик → адрес плеера. Плеер разрешает показ в рамке, а сам
-    youtube.com — нет, поэтому ролик открываем через плеер."""
+    youtube.com — нет, поэтому ролик открываем через встроенный портал или плеер."""
     if '/embed/' in url:
         return None
     m = (re.search(r'youtu\.be/([\w-]{6,})', url)
          or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', url))
     if m:
-        return 'https://www.youtube.com/embed/%s?rel=0' % m.group(1)
+        return 'https://www.youtube-nocookie.com/embed/%s?autoplay=1' % m.group(1)
     if re.search(r'youtube\.com(?:\/.*)?$', url, re.I):
-        return 'https://www.youtube-nocookie.com/embed?listType=search&list=popular'
+        return '/__youtube'
     return None
 
 
@@ -184,6 +360,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith('/__env'):
             self.env()
             return
+        if self.path.startswith('/__youtube'):
+            self.youtube()
+            return
         super().do_GET()
 
     def do_HEAD(self):
@@ -238,6 +417,29 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def youtube(self):
+        """Встроенный портал YouTube: поиск, просмотр и популярные ролики без ошибки 153."""
+        q = urllib.parse.urlsplit(self.path).query
+        params = urllib.parse.parse_qs(q)
+        v = (params.get('v') or [''])[0]
+        query = (params.get('q') or [''])[0]
+
+        if not v and query:
+            m = (re.search(r'youtu\.be/([\w-]{6,})', query)
+                 or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/|embed/)([\w-]{6,})', query))
+            if m:
+                v = m.group(1)
+
+        default_video = v or 'dQw4w9WgXcQ'
+        body = YOUTUBE_HTML.replace('{{VIDEO_ID}}', html_mod.escape(default_video, quote=True)).replace('{{QUERY}}', html_mod.escape(query, quote=True)).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Referrer-Policy', 'no-referrer-when-downgrade')
         self.end_headers()
         self.wfile.write(body)
 

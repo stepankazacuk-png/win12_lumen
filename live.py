@@ -475,18 +475,23 @@ CHROME = Chromium()
 
 def rewrite_youtube_url(url):
     """В условиях региональных ограничений на прямые запросы к www.youtube.com
-    перенаправляет просмотр на youtube-nocookie.com, который работает быстро,
-    открывает ролики и не вызывает таймаутов соединения.
+    перенаправляет просмотр на youtube-nocookie.com (с заголовком Referer) или встроенный портал,
+    чтобы ролики открывались быстро и без ошибки 153.
     """
-    if not url or 'youtube-nocookie.com' in url:
+    if not url:
+        return url
+    if 'youtube-nocookie.com' in url:
         return url
     import re
     m = (re.search(r'youtu\.be/([\w-]{6,})', url)
          or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', url))
     if m:
         return 'https://www.youtube-nocookie.com/embed/%s?autoplay=1' % m.group(1)
+    m_search = re.search(r'youtube\.com/results\?(?:.*&)?search_query=([^&#]+)', url)
+    if m_search:
+        return 'http://127.0.0.1:12000/__youtube?q=%s' % m_search.group(1)
     if re.search(r'^(?:https?://)?(?:www\.|m\.)?youtube\.com(?:/?|\?.*)?$', url, re.I):
-        return 'https://www.youtube-nocookie.com/embed?listType=search&list=popular'
+        return 'http://127.0.0.1:12000/__youtube'
     return url
 
 
@@ -527,6 +532,7 @@ class Session(threading.Thread):
                 ('Page.enable', {}),
                 ('Runtime.enable', {}),
                 ('Network.enable', {}),
+                ('Network.setExtraHTTPHeaders', {'headers': {'Referer': 'https://www.google.com/'}}),
                 ('Page.setDownloadBehavior', {'behavior': 'deny'}),
                 ('Emulation.setDeviceMetricsOverride',
                  {'width': self.w, 'height': self.h, 'deviceScaleFactor': 1, 'mobile': False}),
@@ -545,7 +551,7 @@ class Session(threading.Thread):
                 init_url = rewrite_youtube_url(init_url)
                 self.url = init_url
                 try:
-                    self.cdp.send('Page.navigate', {'url': init_url}, session=self.sid)
+                    self.cdp.send('Page.navigate', {'url': init_url, 'referrer': 'https://www.google.com/'}, session=self.sid)
                 except Exception:
                     pass
             self._sync()
@@ -731,7 +737,7 @@ class Session(threading.Thread):
             self.url = url
             self._sync()
             try:
-                self.cdp.send('Page.navigate', {'url': url}, session=self.sid)
+                self.cdp.send('Page.navigate', {'url': url, 'referrer': 'https://www.google.com/'}, session=self.sid)
             except Exception as e:
                 self.loading = False
                 self._sync()
