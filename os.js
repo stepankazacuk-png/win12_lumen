@@ -2138,7 +2138,7 @@ WM.register({
     function getLocalTracks() {
       const out = [];
       const seen = new Set();
-      const dirs = [HOME + '\\Музыка', HOME + '\\Рабочий стол'];
+      const dirs = [HOME + '\\Музыка', HOME + '\\Рабочий стол', HOME + '\\Загрузки', HOME + '\\Документы'];
       dirs.forEach(dir => {
         const res = VFS.list(dir);
         if (res && res.ok && res.items) {
@@ -2446,15 +2446,19 @@ WM.register({
 
       localTracks = getLocalTracks();
       localIdx = localTracks.findIndex(t => t.path === fullPath);
+      if (localIdx < 0 && n) {
+        localTracks.unshift({ name: nm, path: fullPath, node: n, dirName: 'Текущий трек' });
+        localIdx = 0;
+      }
       renderList();
 
       if (n && n.content && (n.content.startsWith('data:') || n.content.startsWith('blob:'))) {
         let audioSrc = n.content;
-        if (audioSrc.startsWith('data:') && !audioSrc.startsWith('data:audio/')) {
+        if (audioSrc.startsWith('data:')) {
           const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
           const ext = (fullPath.split('.').pop() || '').toLowerCase();
           if (mimeMap[ext]) {
-            audioSrc = audioSrc.replace(/^data:[^;]+;base64,/, 'data:' + mimeMap[ext] + ';base64,');
+            audioSrc = audioSrc.replace(/^data:[^;]+(;base64,)/, 'data:' + mimeMap[ext] + '$1');
           }
         }
 
@@ -2530,7 +2534,7 @@ WM.register({
       if (p) {
         const n = (typeof a === 'object' && a.name) ? a.name : VFS.nameOf(p);
         currentTab = 'local';
-        $('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+        $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
         playLocal(p, n);
       }
     };
@@ -2539,7 +2543,7 @@ WM.register({
       const p = typeof arg === 'string' ? arg : arg.path;
       const n = (typeof arg === 'object' && arg.name) ? arg.name : VFS.nameOf(p);
       currentTab = 'local';
-      $('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
+      $$('.mus2-tab', rec.body).forEach(t => t.classList.toggle('on', t.dataset.tab === 'local'));
       playLocal(p, n);
     }
   },
