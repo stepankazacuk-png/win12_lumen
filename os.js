@@ -485,6 +485,69 @@ function generateSpaceAudioWav(type) {
 }
 
 /* ============================================================================
+   ХРАНИЛИЩЕ БОЛЬШИХ ФАЙЛОВ VFS (IndexedDB)
+   ========================================================================== */
+const VfsDB = (() => {
+  const DB_NAME = 'LumenVFS';
+  const STORE_NAME = 'vfs';
+  let dbPromise = null;
+  function getDB() {
+    if (!dbPromise) {
+      dbPromise = new Promise(resolve => {
+        try {
+          if (typeof indexedDB === 'undefined') return resolve(null);
+          const req = indexedDB.open(DB_NAME, 1);
+          req.onupgradeneeded = e => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+          };
+          req.onsuccess = e => resolve(e.target.result);
+          req.onerror = () => resolve(null);
+        } catch (e) { resolve(null); }
+      });
+    }
+    return dbPromise;
+  }
+  async function set(k, v) {
+    try {
+      const db = await getDB();
+      if (!db) return false;
+      return new Promise(resolve => {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.objectStore(STORE_NAME).put(v, k);
+      });
+    } catch (e) { return false; }
+  }
+  async function get(k) {
+    try {
+      const db = await getDB();
+      if (!db) return null;
+      return new Promise(resolve => {
+        const tx = db.transaction([STORE_NAME], 'readonly');
+        const req = tx.objectStore(STORE_NAME).get(k);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) { return null; }
+  }
+  async function remove(k) {
+    try {
+      const db = await getDB();
+      if (!db) return false;
+      return new Promise(resolve => {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.objectStore(STORE_NAME).delete(k);
+      });
+    } catch (e) { return false; }
+  }
+  return { set, get, remove };
+})();
+
+/* ============================================================================
    ВИРТУАЛЬНАЯ ФАЙЛОВАЯ СИСТЕМА
    ========================================================================== */
 const VFS = (() => {
@@ -551,19 +614,42 @@ const VFS = (() => {
   function saveUserVfs() {
     try {
       const u = node('C:\\Users\\' + USER);
-      if (u && u.children) localStorage.setItem('lumen.vfs.' + USER, JSON.stringify(u.children));
-    } catch (e) {}
-  }
-  function loadUserVfs() {
-    try {
-      const raw = localStorage.getItem('lumen.vfs.' + USER);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      const u = node('C:\\Users\\' + USER);
-      if (u && data && typeof data === 'object') {
-        Object.keys(data).forEach(k => { u.children[k] = data[k]; });
+      if (u && u.children) {
+        VfsDB.set('vfs:' + USER, u.children);
+        try { localStorage.setItem('lumen.vfs.' + USER, JSON.stringify(u.children)); } catch (e) {}
       }
     } catch (e) {}
+  }
+  function loadUserVfs(cb) {
+    try {
+      const raw = localStorage.getItem('lumen.vfs.' + USER);
+      if (raw) {
+        const data = JSON.parse(raw);
+        const u = node('C:\\Users\\' + USER);
+        if (u && data && typeof data === 'object') {
+          Object.keys(data).forEach(k => { u.children[k] = data[k]; });
+        }
+      }
+    } catch (e) {}
+    VfsDB.get('vfs:' + USER).then(data => {
+      if (data && typeof data === 'object') {
+        const u = node('C:\\Users\\' + USER);
+        if (u) {
+          Object.keys(data).forEach(k => {
+            if (!u.children[k] || !u.children[k].content) {
+              u.children[k] = data[k];
+            } else if (data[k] && data[k].content) {
+              u.children[k] = data[k];
+            }
+          });
+        }
+      }
+      if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+      if (typeof renderIcons === 'function') renderIcons();
+      if (typeof cb === 'function') cb();
+    }).catch(() => {
+      if (typeof cb === 'function') cb();
+    });
   }
   function mkdir(p) {
     const parts = split(p); if (!parts.length) return { ok: false, err: 'Указан неверный путь' };
@@ -651,6 +737,7 @@ const VFS = (() => {
     Object.keys(tree).forEach(k => delete tree[k]);
     Object.keys(snap).forEach(k => { tree[k] = snap[k]; });
     try { localStorage.removeItem('lumen.vfs.' + USER); } catch (e) {}
+    VfsDB.remove('vfs:' + USER);
     return { ok: true };
   }
   return { tree, root, node, norm, split, mkdir, write, read, rm, mv, cp, list, sizeOf, allFiles, nameOf, parentOf, restore, saveUserVfs, loadUserVfs };
@@ -2455,6 +2542,10 @@ WM.register({
         try { localAudio.pause(); } catch (e) {}
         localAudio = null;
       }
+      if (typeof lastLocalBlobUrl !== 'undefined' && lastLocalBlobUrl) {
+        try { URL.revokeObjectURL(lastLocalBlobUrl); } catch (e) {}
+        lastLocalBlobUrl = null;
+      }
       if (stageFrame) stageFrame.style.display = 'block';
       if (localStage) localStage.style.display = 'none';
       if (vinyl) vinyl.classList.remove('spinning');
@@ -2465,6 +2556,15 @@ WM.register({
       if (player && ready) {
         if (autoplay) player.loadVideoById(TRACKS[idx].id);
         else player.cueVideoById(TRACKS[idx].id);
+      } else {
+        const t = TRACKS[idx];
+        const stage = $('.mus2-stage', rec.body);
+        if (stage && t) {
+          stage.innerHTML = `<iframe id="yt-${rec.id}" src="https://www.youtube-nocookie.com/embed/${t.id}?autoplay=${autoplay ? 1 : 0}&enablejsapi=1"
+                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                             allowfullscreen style="width:100%;height:100%;border:none;border-radius:12px;"></iframe>`;
+        }
+        markPlaying(!!autoplay);
       }
     }
 
@@ -2486,10 +2586,14 @@ WM.register({
 
     function fail(err) {
       if (isLocal) return;
-      $('.mus2-stage', rec.body).innerHTML =
-        `<div class="mus2-off"><b>Плеер недоступен</b>
-         <p>Не удалось связаться с YouTube. Проверьте подключение к сети.</p>
-         <p class="mono">${esc(String(err && err.message || err))}</p></div>`;
+      const t = TRACKS[idx];
+      const stage = $('.mus2-stage', rec.body);
+      if (stage && t) {
+        stage.innerHTML = `<iframe id="yt-${rec.id}" src="https://www.youtube-nocookie.com/embed/${t.id}?autoplay=1&enablejsapi=1"
+                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                           allowfullscreen style="width:100%;height:100%;border:none;border-radius:12px;"></iframe>`;
+        markPlaying(true);
+      }
     }
 
     function showBlocked(t) {
@@ -2677,6 +2781,7 @@ WM.register({
       const v = $('#vol'); if (v) v.value = State.volume;
     };
 
+    let lastLocalBlobUrl = null;
     function playLocal(fullPath, trackName) {
       isLocal = true;
       if (player && ready && typeof player.pauseVideo === 'function') {
@@ -2685,6 +2790,10 @@ WM.register({
       if (localAudio) {
         try { localAudio.pause(); } catch (e) {}
         localAudio = null;
+      }
+      if (lastLocalBlobUrl) {
+        try { URL.revokeObjectURL(lastLocalBlobUrl); } catch (e) {}
+        lastLocalBlobUrl = null;
       }
       clearBlocked();
 
@@ -2707,6 +2816,13 @@ WM.register({
       }
       renderList();
 
+      const isDemoSignal = fullPath.toLowerCase().endsWith('signal.wav') && (!n || !n.content);
+      const isDemoOrbit = fullPath.toLowerCase().endsWith('orbit.wav') && (!n || !n.content);
+      if (isDemoSignal || isDemoOrbit) {
+        const synthWav = generateSpaceAudioWav(isDemoOrbit ? 'orbit' : 'signal');
+        if (n) n.content = synthWav;
+      }
+
       if (n && n.content && (n.content.startsWith('data:') || n.content.startsWith('blob:'))) {
         let audioSrc = n.content;
         if (audioSrc.startsWith('data:')) {
@@ -2722,6 +2838,7 @@ WM.register({
             }
             const blob = new Blob([u8arr], { type: mime });
             audioSrc = URL.createObjectURL(blob);
+            lastLocalBlobUrl = audioSrc;
           } catch (e) {
             const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
             const ext = (fullPath.split('.').pop() || '').toLowerCase();
@@ -2755,7 +2872,7 @@ WM.register({
           localAudio.onerror = () => {
             markPlaying(false);
             if (vinyl) vinyl.classList.remove('spinning');
-            Notify('Музыка', 'Формат файла не поддерживается браузером.', ICO.music, true);
+            Notify('Музыка', 'Формат файла не поддерживается или повреждён.', ICO.music, true);
           };
 
           localAudio.play().then(() => {
@@ -2769,15 +2886,19 @@ WM.register({
           markPlaying(false);
         }
       } else {
-        const synthWav = generateSpaceAudioWav(fullPath.toLowerCase().includes('orbit') ? 'orbit' : 'signal');
-        if (n) n.content = synthWav;
-        playLocal(fullPath, nm);
+        markPlaying(false);
+        if (vinyl) vinyl.classList.remove('spinning');
+        Notify('Музыка', 'Файл пуст или повреждён. Загрузите файл заново с ПК.', ICO.music, true);
       }
     }
 
     setUI();
     rec.api.stop = () => {
       clearInterval(rec.api.iv);
+      if (lastLocalBlobUrl) {
+        try { URL.revokeObjectURL(lastLocalBlobUrl); } catch (e) {}
+        lastLocalBlobUrl = null;
+      }
       if (localAudio) { try { localAudio.pause(); } catch (e) {} }
       if (player && ready && player.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
     };

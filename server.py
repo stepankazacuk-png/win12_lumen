@@ -56,18 +56,51 @@ BOOTSTRAP = """<script>
 (function(){
   var P='/__proxy?u=';
   function abs(u){ try { return new URL(u, document.baseURI).href; } catch(e){ return null; } }
+  function unwrap(u){
+    if(!u) return u;
+    try {
+      var o = new URL(u, document.baseURI);
+      if(o.pathname === '/url' && o.searchParams.has('q')) {
+        return o.searchParams.get('q');
+      }
+      if(o.pathname === '/url' && o.searchParams.has('url')) {
+        return o.searchParams.get('url');
+      }
+      return o.href;
+    } catch(e){
+      return u;
+    }
+  }
   function viaProxy(u){
     if(!u) return false;
     if(/^(mailto:|tel:|javascript:|data:|blob:|#)/i.test(u)) return false;
-    var a=abs(u); if(!a) return false;
+    var target = unwrap(u);
+    var a = abs(target); if(!a) return false;
     if(!/^https?:/i.test(a)) return false;
     location.href = P + encodeURIComponent(a);
     return true;
   }
+  function fixTarget(n){
+    if(!n || !n.getAttribute) return;
+    if(n.getAttribute('target') && n.getAttribute('target') !== '_self') {
+      n.setAttribute('target', '_self');
+    }
+  }
+  document.addEventListener('pointerdown', function(e){
+    var n=e.target;
+    while(n && n.tagName!=='A') n=n.parentNode;
+    fixTarget(n);
+  }, true);
+  document.addEventListener('mousedown', function(e){
+    var n=e.target;
+    while(n && n.tagName!=='A') n=n.parentNode;
+    fixTarget(n);
+  }, true);
   document.addEventListener('click', function(e){
     var n=e.target;
     while(n && n.tagName!=='A') n=n.parentNode;
     if(!n || !n.getAttribute) return;
+    fixTarget(n);
     var h=n.getAttribute('href');
     if(h===null) return;
     if(viaProxy(h)) { e.preventDefault(); e.stopPropagation(); }
@@ -81,6 +114,10 @@ BOOTSTRAP = """<script>
     e.preventDefault();
     location.href = P + encodeURIComponent(a + (a.indexOf('?')<0?'?':'&') + q);
   }, true);
+  window.open = function(u){
+    if(u) viaProxy(u);
+    return window;
+  };
   window.addEventListener('error', function(){}, true);
 })();
 </script>"""
@@ -294,7 +331,15 @@ def safe_url(raw):
     host = (p.hostname or '').lower()
     if not host or BLOCKED_HOSTS.match(host):
         return None
-    return urllib.parse.urlunsplit(p)
+    try:
+        ascii_host = host.encode('idna').decode('ascii')
+    except Exception:
+        ascii_host = host
+    if p.port:
+        ascii_host += ':' + str(p.port)
+    path = urllib.parse.quote(urllib.parse.unquote(p.path or '/'), safe='/:%@!$&\'()*+,;=')
+    query = urllib.parse.quote(urllib.parse.unquote(p.query or ''), safe='/:%@!$&\'()*+,;=?=')
+    return urllib.parse.urlunsplit((p.scheme, ascii_host, path, query, p.fragment))
 
 
 def decode_body(data, enc):

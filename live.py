@@ -50,11 +50,28 @@ Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
 Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
 Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 window.chrome = window.chrome || { runtime: {} };
-window.open = function (u) { if (u) location.href = u; return null; };
-document.addEventListener('click', function (e) {
-  var a = e.target && e.target.closest && e.target.closest('a[target="_blank"]');
-  if (a) a.target = '_self';
-}, true);
+window.open = function (u) {
+  if (u) {
+    try { location.href = u; } catch (e) {}
+  }
+  return window;
+};
+function fixLink(e) {
+  var el = e.target;
+  while (el && el !== document) {
+    if (el.tagName === 'A') {
+      var t = el.getAttribute('target');
+      if (t && t !== '_self') {
+        el.setAttribute('target', '_self');
+      }
+      break;
+    }
+    el = el.parentElement;
+  }
+}
+document.addEventListener('pointerdown', fixLink, true);
+document.addEventListener('mousedown', fixLink, true);
+document.addEventListener('click', fixLink, true);
 """
 
 QUALITY = 58            # качество JPEG
@@ -289,6 +306,12 @@ class CDP:
     def on_event(self, fn):
         self._handlers.append(fn)
 
+    def remove_event(self, fn):
+        try:
+            self._handlers.remove(fn)
+        except ValueError:
+            pass
+
     def _frame(self, payload):
         n = len(payload)
         head = bytes([0x81])
@@ -517,6 +540,8 @@ class Session(threading.Thread):
         self.need_sync = False
         self.dialogs = []
         self.last_sync = 0.0
+        self.pending_nav = None
+        self.stray_targets = []
 
     # ---------- запуск ----------
     def run(self):
@@ -532,6 +557,10 @@ class Session(threading.Thread):
             r = self.cdp.call('Target.attachToTarget', {'targetId': self.target, 'flatten': True})
             self.sid = r['sessionId']
             self.cdp.on_event(self._on_event)
+            try:
+                self.cdp.call('Target.setDiscoverTargets', {'discover': True})
+            except Exception:
+                pass
 
             for method, params in [
                 ('Page.enable', {}),
@@ -575,6 +604,11 @@ class Session(threading.Thread):
                 pass
         finally:
             self.alive = False
+            if self.cdp:
+                try:
+                    self.cdp.remove_event(self._on_event)
+                except Exception:
+                    pass
             if self.target:
                 CHROME.close_tab(self.target)
             CHROME.sessions = max(0, CHROME.sessions - 1)
@@ -641,6 +675,21 @@ class Session(threading.Thread):
                 except WSError:
                     break
 
+            # 2.1. Перенаправление новых вкладок в текущий сеанс и закрытие лишних
+            while self.stray_targets:
+                tid = self.stray_targets.pop(0)
+                try:
+                    CHROME.close_tab(tid)
+                except Exception:
+                    pass
+            if self.pending_nav:
+                u = self.pending_nav
+                self.pending_nav = None
+                try:
+                    self.cdp.send('Page.navigate', {'url': u}, session=self.sid)
+                except Exception:
+                    pass
+
             # 3. Состояние: адрес, заголовок, история. Обновляем по событию,
             #    а если событий нет — раз в секунду (на паузе реже).
             now = time.time()
@@ -681,10 +730,30 @@ class Session(threading.Thread):
         прочитать, и связь встала бы намертво. Поэтому здесь только пометки,
         а сами вызовы делает главный цикл.
         """
-        if msg.get('sessionId') != self.sid:
-            return
         m = msg.get('method')
         p = msg.get('params', {})
+        if m == 'Target.targetCreated':
+            tinfo = p.get('targetInfo', {})
+            tid = tinfo.get('targetId')
+            ttype = tinfo.get('type')
+            turl = tinfo.get('url')
+            if tid and tid != self.target and ttype == 'page':
+                if turl and turl not in ('about:blank', ''):
+                    self.pending_nav = turl
+                self.stray_targets.append(tid)
+            return
+        elif m == 'Target.targetInfoChanged':
+            tinfo = p.get('targetInfo', {})
+            tid = tinfo.get('targetId')
+            turl = tinfo.get('url')
+            if tid and tid != self.target and tinfo.get('type') == 'page':
+                if turl and turl not in ('about:blank', ''):
+                    self.pending_nav = turl
+                    self.stray_targets.append(tid)
+            return
+
+        if msg.get('sessionId') != self.sid:
+            return
         if m == 'Page.frameNavigated':
             f = p.get('frame', {})
             if not f.get('parentId'):
