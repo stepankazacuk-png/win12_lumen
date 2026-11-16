@@ -5242,22 +5242,45 @@ function makeIconDraggable(n, key, host) {
         }
       }
       const targetDeskIcon = elUnder && elUnder.closest('.dicon');
+      if (key.startsWith('user:') && targetDeskIcon && targetDeskIcon.dataset.key === 'sys:Корзина') {
+        const selected = $$('.dicon.sel', host).filter(x => x.dataset.key && x.dataset.key.startsWith('user:'));
+        const toDelete = (selected.length > 1 && selected.some(x => x === n)) ? selected : [n];
+        toDelete.forEach(iconEl => {
+          const itName = iconEl.dataset.key.slice(5);
+          VFS.rm(DESK_DIR + '\\' + itName, true);
+          removeDeskItem(itName);
+        });
+        syncDeskItemsWithVfs();
+        renderIcons();
+        refreshExplorerWindows();
+        Sound.notif();
+        Notify('Корзина', toDelete.length > 1 ? 'Удалено в корзину: ' + toDelete.length + ' объектов' : '«' + key.slice(5) + '» удалён в корзину', ICO.trash, true);
+        return;
+      }
       if (key.startsWith('user:') && targetDeskIcon && targetDeskIcon !== n) {
         const targetKey = targetDeskIcon.dataset.key;
         if (targetKey && targetKey.startsWith('user:')) {
           const targetName = targetKey.slice(5);
           const targetNode = VFS.node(DESK_DIR + '\\' + targetName);
           if (targetNode && targetNode.type === 'dir') {
-            const itemName = key.slice(5);
-            const srcPath = DESK_DIR + '\\' + itemName;
-            const destFolder = DESK_DIR + '\\' + targetName;
-            const res = moveVfsItemToFolder(srcPath, destFolder);
-            if (res.ok) {
+            const selected = $$('.dicon.sel', host).filter(x => x.dataset.key && x.dataset.key.startsWith('user:') && x.dataset.key !== targetKey);
+            const toMove = (selected.length > 1 && selected.some(x => x === n)) ? selected : [n];
+            let movedCount = 0;
+            toMove.forEach(iconEl => {
+              const itemName = iconEl.dataset.key.slice(5);
+              const srcPath = DESK_DIR + '\\' + itemName;
+              const destFolder = DESK_DIR + '\\' + targetName;
+              const res = moveVfsItemToFolder(srcPath, destFolder);
+              if (res.ok) movedCount++;
+            });
+            if (movedCount > 0) {
               syncDeskItemsWithVfs();
               renderIcons();
               refreshExplorerWindows();
               Sound.notif();
-              Notify('Рабочий стол', '«' + itemName + '» перемещён в папку «' + targetName + '»', ICO.folder, true);
+              Notify('Рабочий стол', movedCount > 1
+                ? 'Перемещено в «' + targetName + '»: ' + movedCount + ' объектов'
+                : '«' + key.slice(5) + '» перемещён в папку «' + targetName + '»', ICO.folder, true);
               return;
             }
           }
@@ -5294,6 +5317,27 @@ function makeIconDraggable(n, key, host) {
 
   n.addEventListener('pointerup', endDrag);
   n.addEventListener('pointercancel', endDrag);
+}
+
+function deleteSelectedDeskIcons() {
+  const host = $('#icons');
+  if (!host) return;
+  const selIcons = $$('.dicon.sel', host);
+  const selUserItems = selIcons.filter(x => x.dataset.key && x.dataset.key.startsWith('user:'));
+  if (!selUserItems.length) return;
+
+  selUserItems.forEach(iconEl => {
+    const itemName = iconEl.dataset.key.slice(5);
+    VFS.rm(DESK_DIR + '\\' + itemName, true);
+    removeDeskItem(itemName);
+  });
+  syncDeskItemsWithVfs();
+  renderIcons();
+  refreshExplorerWindows();
+  Sound.notif();
+  Notify('Рабочий стол', selUserItems.length === 1
+    ? 'Удалено: ' + selUserItems[0].dataset.key.slice(5)
+    : 'Удалено объектов: ' + selUserItems.length, ICO.trash, true);
 }
 
 function renderIcons() {
@@ -5421,9 +5465,34 @@ function renderIcons() {
         return WM.open('notepad', { path: DESK_DIR + '\\' + it.name });
       };
       n.ondblclick = () => { if (n._dragged) return; Sound.click(); open(); };
-      n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+      n.onclick = e => {
+        if (n._dragged) return;
+        if (e && (e.ctrlKey || e.metaKey)) {
+          n.classList.toggle('sel');
+        } else {
+          $$('.dicon', host).forEach(x => { if (x !== n) x.classList.remove('sel'); });
+          n.classList.add('sel');
+        }
+      };
       n.oncontextmenu = e => {
-        e.preventDefault(); e.stopPropagation(); n.onclick();
+        e.preventDefault(); e.stopPropagation();
+        if (!n.classList.contains('sel')) {
+          $$('.dicon', host).forEach(x => x.classList.remove('sel'));
+          n.classList.add('sel');
+        }
+        const selectedIcons = $$('.dicon.sel', host);
+        const selectedUserItems = selectedIcons.filter(x => x.dataset.key && x.dataset.key.startsWith('user:'));
+        if (selectedUserItems.length > 1) {
+          openCtx(e.clientX, e.clientY, [
+            { t: 'Открыть', i: ICO.exe, f: () => {
+                selectedUserItems.forEach(el => { if (el.ondblclick) el.ondblclick(); });
+              } },
+            { sep: true },
+            { t: 'Удалить', i: ICO.trash, f: deleteSelectedDeskIcons },
+            { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства', 'Выбрано элементов: ' + selectedUserItems.length, ICO.settings, true) },
+          ]);
+          return;
+        }
         const ctxItems = [
           { t: 'Открыть', i: ICO.exe, f: open },
           { t: 'Переименовать', i: ICO.ren, f: () => {
@@ -5439,6 +5508,9 @@ function renderIcons() {
           { t: 'Удалить', i: ICO.trash, f: () => {
               VFS.rm(DESK_DIR + '\\' + it.name, true);
               removeDeskItem(it.name);
+              syncDeskItemsWithVfs();
+              renderIcons();
+              refreshExplorerWindows();
               Sound.notif();
               Notify('Рабочий стол', 'Удалено: ' + it.name, ICO.trash, true);
             } },
@@ -5482,9 +5554,21 @@ function renderIcons() {
       }
 
       n.ondblclick = () => { if (n._dragged) return; Sound.click(); d.f(); };
-      n.onclick = () => { if (n._dragged) return; $$('.dicon', host).forEach(x => x.classList.remove('sel')); n.classList.add('sel'); };
+      n.onclick = e => {
+        if (n._dragged) return;
+        if (e && (e.ctrlKey || e.metaKey)) {
+          n.classList.toggle('sel');
+        } else {
+          $$('.dicon', host).forEach(x => { if (x !== n) x.classList.remove('sel'); });
+          n.classList.add('sel');
+        }
+      };
       n.oncontextmenu = e => {
-        e.preventDefault(); e.stopPropagation(); n.onclick();
+        e.preventDefault(); e.stopPropagation();
+        if (!n.classList.contains('sel')) {
+          $$('.dicon', host).forEach(x => x.classList.remove('sel'));
+          n.classList.add('sel');
+        }
         openCtx(e.clientX, e.clientY, [
           { t: 'Открыть', i: ICO.exe, f: d.f },
           { sep: true },
@@ -5854,9 +5938,41 @@ function initKeys() {
     if (!typing && aw && aw.api.keys && aw.api.keys(e.key, e)) { e.preventDefault(); return; }
 
     if (e.ctrlKey && e.altKey && k === 't') { e.preventDefault(); WM.open('terminal'); return; }
-    if (e.key === 'Escape') { closeCtx(); Quick.close(); Widgets.close(); Spot.close(); StartMenu.closeMenu(); return; }
+    if (e.key === 'Escape') {
+      const host = $('#icons');
+      if (host) $$('.dicon.sel', host).forEach(n => n.classList.remove('sel'));
+      closeCtx(); Quick.close(); Widgets.close(); Spot.close(); StartMenu.closeMenu();
+      return;
+    }
     if (e.key === 'F5') { e.preventDefault(); renderIcons(); return; }
     if (typing) return;
+    if ((e.ctrlKey || e.metaKey) && k === 'a') {
+      const aw = activeWin();
+      if (!aw || aw.minimized || e.target.closest('#desk')) {
+        e.preventDefault();
+        const host = $('#icons');
+        if (host) $$('.dicon', host).forEach(n => n.classList.add('sel'));
+        return;
+      }
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      const host = $('#icons');
+      const selUserIcons = host ? $$('.dicon.sel', host).filter(x => x.dataset.key && x.dataset.key.startsWith('user:')) : [];
+      if (selUserIcons.length > 0) {
+        e.preventDefault();
+        deleteSelectedDeskIcons();
+        return;
+      }
+    }
+    if (e.key === 'Enter') {
+      const host = $('#icons');
+      const selIcons = host ? $$('.dicon.sel', host) : [];
+      if (selIcons.length > 0) {
+        e.preventDefault();
+        selIcons.forEach(n => { if (n.ondblclick) n.ondblclick(); });
+        return;
+      }
+    }
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !StartMenu.isOpen()) { e.preventDefault(); cycleWins(e.key === 'ArrowDown' ? 1 : -1); }
   });
   window.addEventListener('keyup', e => {
@@ -6380,6 +6496,124 @@ function initDesktopCtx() {
 }
 
 /* ============================================================================
+   ПРЯМОУГОЛЬНОЕ ВЫДЕЛЕНИЕ РАБОЧЕГО СТОЛА (КАК В WINDOWS)
+   ========================================================================== */
+function initDesktopSelection() {
+  const desk = $('#desk');
+  let selBox = $('#deskSel');
+  if (!desk) return;
+  if (!selBox) {
+    selBox = el('div', 'desk-sel');
+    selBox.id = 'deskSel';
+    desk.appendChild(selBox);
+  }
+
+  let startX = 0, startY = 0;
+  let isSelecting = false;
+  let initialSel = new Set();
+  let deskRect = null;
+  let iconItems = [];
+
+  function isBackground(target) {
+    if (!target) return false;
+    if (target.closest('.win') || target.closest('#taskbar') || target.closest('#ctx') ||
+        target.closest('#widgets') || target.closest('#quick') || target.closest('#spot') ||
+        target.closest('#start') || target.closest('.dicon') || target.closest('.po-passcard') ||
+        target.closest('#lock') || target.closest('#boot') || target.closest('#hud') ||
+        target.closest('#altTabHud')) {
+      return false;
+    }
+    return !!(target.closest('#desk') || target.id === 'desk' || target.id === 'icons' ||
+              target.classList.contains('wall') || target.closest('.wall'));
+  }
+
+  desk.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (!isBackground(e.target)) return;
+
+    deskRect = desk.getBoundingClientRect();
+    startX = e.clientX - deskRect.left;
+    startY = e.clientY - deskRect.top;
+    isSelecting = false;
+
+    const host = $('#icons');
+    const allIcons = host ? $$('.dicon', host) : [];
+    initialSel = new Set();
+
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      allIcons.forEach(ic => {
+        if (ic.classList.contains('sel')) initialSel.add(ic);
+      });
+    } else {
+      allIcons.forEach(ic => ic.classList.remove('sel'));
+    }
+
+    iconItems = allIcons.map(ic => {
+      const r = ic.getBoundingClientRect();
+      return {
+        el: ic,
+        left: r.left - deskRect.left,
+        top: r.top - deskRect.top,
+        right: r.right - deskRect.left,
+        bottom: r.bottom - deskRect.top
+      };
+    });
+
+    const deskW = deskRect && deskRect.width > 0 ? deskRect.width : window.innerWidth;
+    const deskH = deskRect && deskRect.height > 0 ? deskRect.height : window.innerHeight;
+    const onMouseMove = ev => {
+      const curX = Math.max(0, Math.min(deskW, ev.clientX - deskRect.left));
+      const curY = Math.max(0, Math.min(deskH, ev.clientY - deskRect.top));
+      const dx = curX - startX;
+      const dy = curY - startY;
+
+      if (!isSelecting) {
+        if (Math.hypot(dx, dy) < 4) return;
+        isSelecting = true;
+        selBox.style.display = 'block';
+      }
+
+      const boxL = Math.min(startX, curX);
+      const boxT = Math.min(startY, curY);
+      const boxW = Math.abs(dx);
+      const boxH = Math.abs(dy);
+      const boxR = boxL + boxW;
+      const boxB = boxT + boxH;
+
+      selBox.style.left = boxL + 'px';
+      selBox.style.top = boxT + 'px';
+      selBox.style.width = boxW + 'px';
+      selBox.style.height = boxH + 'px';
+
+      iconItems.forEach(item => {
+        const hit = !(item.left > boxR || item.right < boxL || item.top > boxB || item.bottom < boxT);
+        if (ev.ctrlKey || ev.metaKey) {
+          if (hit) {
+            item.el.classList.add('sel');
+          } else {
+            item.el.classList.toggle('sel', initialSel.has(item.el));
+          }
+        } else {
+          item.el.classList.toggle('sel', hit);
+        }
+      });
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      if (isSelecting) {
+        selBox.style.display = 'none';
+        isSelecting = false;
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+/* ============================================================================
    ОБЛЕГЧЁННЫЙ РЕЖИМ ПО ФАКТУ КАДРОВ
    ========================================================================== */
 /* Меряем кадры сразу после запуска. Если отрисовка идёт медленно (слабое
@@ -6601,6 +6835,7 @@ function init() {
   applyBrightness(State.brightness);
   initKeys();
   initDesktopCtx();
+  initDesktopSelection();
   initResponsive();
 
   $('#startBtn').onclick = () => { Sound.click(); StartMenu.toggle(); };
@@ -6635,9 +6870,7 @@ function init() {
     if (!e.target.closest('#widgets') && !e.target.closest('#widgetsBtn') && !e.target.closest('#clockBtn')) Widgets.close();
     if (!e.target.closest('#spot') && !e.target.closest('#searchBtn')) Spot.close();
   });
-  $('#desk').addEventListener('mousedown', e => {
-    if (e.target.id === 'desk' || e.target.classList.contains('wall') || e.target.id === 'icons') $$('.dicon').forEach(x => x.classList.remove('sel'));
-  });
+
 
   $('#lockBtn').onclick = unlock;
   $('#lockCodeBtn').onclick = tryLockCode;
