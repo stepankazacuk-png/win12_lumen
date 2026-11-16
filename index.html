@@ -114,11 +114,11 @@
 
         <!-- Widgets panel -->
         <aside id="widgets">
-          <div class="wcard w-hero">
-            <h4>Погода · Москва</h4>
+          <div class="wcard w-hero" id="wHero" style="cursor:pointer" title="Нажмите, чтобы переключить город">
+            <h4 id="wCity">Погода · Москва</h4>
             <div class="w-temp" id="wTemp">+7°</div>
             <div class="w-sub" id="wCond">Облачно · ощущается +5°</div>
-            <div class="w-sub">Ветер 4 м/с · влажность 78%</div>
+            <div class="w-sub" id="wWind">Ветер 4 м/с · влажность 78%</div>
           </div>
           <div class="wcard">
             <h4>Календарь</h4>
@@ -213,6 +213,15 @@
 
         <!-- Notifications -->
         <div id="notif"></div>
+
+        <!-- Notification Center -->
+        <div id="notifCenter">
+          <div class="nc-head">
+            <h3>Уведомления</h3>
+            <button class="pill" id="ncClear">Очистить все</button>
+          </div>
+          <div class="nc-list" id="ncList"></div>
+        </div>
 
         <!-- Volume / brightness HUD -->
         <div id="volHud">

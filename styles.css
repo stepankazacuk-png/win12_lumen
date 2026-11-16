@@ -1140,3 +1140,66 @@ html.lite #monitor.zoom{animation:none}
 .g-t2048.v2048{background:linear-gradient(140deg,#ffd166,#ff5c9e);font-size:18px;color:#10121c}
 .g-t2048.vbig{background:linear-gradient(140deg,#5cc8ff,#7b6cff);font-size:18px;color:#10121c}
 
+/* ============================================================
+   MODAL DIALOGS (WM.prompt / WM.confirm)
+   ============================================================ */
+.modal-overlay{position:absolute;inset:0;z-index:950;background:rgba(0,0,0,.45);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;animation:winIn .18s var(--ease-out) both}
+.modal-card{width:min(440px,calc(100vw - 32px));background:var(--panel-strong);backdrop-filter:var(--blur);
+  border:1px solid var(--stroke-2);border-radius:var(--r-lg);box-shadow:var(--shadow-float);padding:20px 22px;
+  display:flex;flex-direction:column;gap:14px}
+.modal-head{display:flex;align-items:center;justify-content:space-between}
+.modal-head h4{margin:0;font-size:15px;font-weight:700}
+.modal-msg{font-size:13px;color:var(--txt-dim);line-height:1.5}
+.modal-inp{width:100%;box-sizing:border-box;padding:9px 13px;font-size:13.5px;border-radius:9px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
+
+/* ============================================================
+   NOTIFICATION CENTER FLYOUT
+   ============================================================ */
+#notifCenter{position:absolute;right:12px;bottom:calc(var(--tb-h) + 12px);width:380px;max-width:calc(100vw - 24px);
+  max-height:calc(100vh - var(--tb-h) - 30px);border-radius:var(--r-lg);background:var(--panel-strong);
+  backdrop-filter:var(--blur);border:1px solid var(--stroke-2);box-shadow:var(--shadow-float);display:none;
+  flex-direction:column;z-index:600;overflow:hidden;animation:winIn .2s var(--ease-out) both}
+#notifCenter.on{display:flex}
+.nc-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;border-bottom:1px solid var(--stroke)}
+.nc-head h3{margin:0;font-size:14.5px;font-weight:700}
+.nc-list{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-height:120px;max-height:480px}
+.nc-item{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;border-radius:var(--r);background:rgba(255,255,255,.05);
+  border:1px solid var(--stroke);transition:background .15s;position:relative}
+.nc-item:hover{background:rgba(255,255,255,.1)}
+.nc-ico{width:28px;height:28px;flex-shrink:0;display:grid;place-items:center}
+.nc-ico svg{width:20px;height:20px}
+.nc-body{flex:1;min-width:0}
+.nc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.nc-title{font-size:12.5px;font-weight:700;color:var(--txt)}
+.nc-time{font-size:10.5px;color:var(--txt-mute)}
+.nc-text{font-size:12px;color:var(--txt-dim);line-height:1.4;word-break:break-word}
+.nc-del{opacity:0;background:none;border:none;color:var(--txt-mute);cursor:pointer;padding:2px 4px;border-radius:4px;font-size:12px;transition:opacity .15s}
+.nc-item:hover .nc-del{opacity:1}
+.nc-empty{padding:36px 16px;text-align:center;color:var(--txt-mute);font-size:12.5px}
+
+/* ============================================================
+   EXPLORER: DETAILS VIEW & MARQUEE SELECTION
+   ============================================================ */
+.files.details-view{display:flex;flex-direction:column;gap:1px;padding:8px 12px;overflow-y:auto}
+.ex-details-head{display:grid;grid-template-columns:2.5fr 1.2fr 1fr 1fr;padding:7px 12px;font-size:11.5px;font-weight:700;
+  color:var(--txt-dim);border-bottom:1px solid var(--stroke);margin-bottom:4px;user-select:none;flex-shrink:0}
+.files.details-view .fitem{display:grid;grid-template-columns:2.5fr 1.2fr 1fr 1fr;align-items:center;flex-direction:row;
+  padding:7px 12px;gap:8px;border-radius:6px;width:100%;box-sizing:border-box}
+.files.details-view .fitem .fitem-col{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files.details-view .fitem .fitem-name{display:flex;align-items:center;gap:10px}
+.files.details-view .fitem svg{width:20px;height:20px;flex-shrink:0}
+.files.details-view .fitem span{font-size:12.5px;text-align:left;line-height:1.2}
+.ex-sel{position:absolute;pointer-events:none;z-index:20;display:none;background:rgba(92,200,255,.2);
+  border:1px solid rgba(92,200,255,.75);box-shadow:0 0 10px rgba(92,200,255,.15);border-radius:2px}
+html[data-theme="light"] .ex-sel{background:rgba(0,120,215,.18);border:1px solid rgba(0,120,215,.85)}
+
+/* ============================================================
+   NOTEPAD: FIND BAR
+   ============================================================ */
+.np-find-bar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(0,0,0,.25);border-bottom:1px solid var(--stroke);font-size:12px;flex-wrap:wrap}
+.np-find-bar input{padding:5px 9px;font-size:12px;border-radius:6px;background:rgba(255,255,255,.08);border:1px solid var(--stroke);color:var(--txt);outline:none;min-width:140px}
+.np-find-bar .btn{padding:4px 9px;font-size:11.5px}
+
+

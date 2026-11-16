@@ -45,6 +45,7 @@ const ICO = {
   up: G('<path d="M12 19V6M6 12l6-6 6 6"/>'),
   down: G('<path d="M12 5v13M6 12l6 6 6-6"/>'),
   trash: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-trs-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#64748b"/></linearGradient></defs><path d="M4 6h16M8 6V4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 16 4v2" stroke="#64748b" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M5.5 6l1.2 13.5a2 2 0 0 0 2 1.8h6.6a2 2 0 0 0 2-1.8L18.5 6" fill="url(#g-trs-c)"/><path d="M10 10v7M14 10v7" stroke="#f1f5f9" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  trashFull: `<svg viewBox="0 0 24 24"><defs><linearGradient id="g-trs-f" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0284c7"/></linearGradient></defs><path d="M4 6h16M8 6V4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 16 4v2" stroke="#0284c7" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M5.5 6l1.2 13.5a2 2 0 0 0 2 1.8h6.6a2 2 0 0 0 2-1.8L18.5 6" fill="url(#g-trs-f)"/><path d="M9 5L11 2l3 2 1-2 2 3" stroke="#f8fafc" stroke-width="1.2" fill="#e2e8f0"/><path d="M10 10v7M14 10v7" stroke="#f1f5f9" stroke-width="1.5" stroke-linecap="round"/></svg>`,
   plus: G('<path d="M12 5v14M5 12h14"/>'),
   x: G('<path d="M6 6l12 12M18 6L6 18"/>'),
   min: G('<path d="M5 12h14"/>'),
@@ -224,6 +225,7 @@ const State = {
   locked: true,       // система заблокирована до ввода пароля
   passTries: 0,       // счётчик неверных попыток пароля
   user: null,         // кто вошёл: { name, role }
+  notifications: [],  // история уведомлений
   lite: false,        // облегчённый режим оформления (включается сам при просадке кадров)
   tuned: false,       // решение о режиме уже принято
 };
@@ -744,11 +746,222 @@ const VFS = (() => {
 })();
 
 /* ============================================================================
-   УВЕДОМЛЕНИЯ
+   КОРЗИНА (RECYCLE BIN)
    ========================================================================== */
+const Trash = (() => {
+  const getKey = () => 'lumen.trash.' + (State.user ? State.user.name : (typeof USER !== 'undefined' ? USER : 'default'));
+  function copyTree(from, to) {
+    if (!from || !to) return;
+    Object.keys(from.children || {}).forEach(k => {
+      const c = from.children[k];
+      if (c.type === 'dir') {
+        to.children[k] = { type: 'dir', children: {} };
+        copyTree(c, to.children[k]);
+      } else {
+        to.children[k] = { type: 'file', ext: c.ext, content: c.content };
+      }
+    });
+  }
+  function load() {
+    try {
+      const data = localStorage.getItem(getKey());
+      return data ? JSON.parse(data) : [];
+    } catch (e) { return []; }
+  }
+  function save(items) {
+    try {
+      localStorage.setItem(getKey(), JSON.stringify(items));
+    } catch (e) {}
+    updateIcon();
+  }
+  function isEmpty() {
+    return load().length === 0;
+  }
+  function getItems() {
+    return load();
+  }
+  function moveToTrash(path) {
+    const node = VFS.node(path);
+    if (!node) return { ok: false, err: 'Объект не найден' };
+    const name = VFS.nameOf(path);
+    const isDir = node.type === 'dir';
+    const data = JSON.parse(JSON.stringify(node));
+    const item = {
+      id: Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      origPath: path,
+      name,
+      type: isDir ? 'dir' : 'file',
+      ext: node.ext || '',
+      date: new Date().toLocaleString('ru'),
+      data,
+    };
+    const list = load();
+    list.unshift(item);
+    save(list);
+    VFS.rm(path, true);
+    if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+    if (typeof renderIcons === 'function') renderIcons();
+    if (typeof refreshExplorerWindows === 'function') refreshExplorerWindows();
+    Notify('Корзина', '«' + name + '» перемещён в корзину', ICO.trash, true);
+    return { ok: true, item };
+  }
+  function restore(id) {
+    const list = load();
+    const idx = list.findIndex(x => x.id === id);
+    if (idx === -1) return { ok: false, err: 'Элемент не найден в корзине' };
+    const item = list[idx];
+    let target = item.origPath;
+    if (VFS.node(target)) {
+      const parent = VFS.parentOf(target);
+      const base = item.name.replace(/\.[^.]+$/, '');
+      let counter = 1;
+      let newName = item.ext ? base + ' (восстановлено).' + item.ext : base + ' (восстановлено)';
+      while (VFS.node((parent.length ? 'C:\\' + parent.join('\\') : 'C:\\') + '\\' + newName)) {
+        counter++;
+        newName = item.ext ? base + ' (восстановлено ' + counter + ').' + item.ext : base + ' (восстановлено ' + counter + ')';
+      }
+      target = (parent.length ? 'C:\\' + parent.join('\\') : 'C:\\') + '\\' + newName;
+      item.name = newName;
+    }
+    const p = VFS.parentOf(target);
+    const pStr = p.length ? 'C:\\' + p.join('\\') : 'C:\\';
+    if (!VFS.node(pStr)) VFS.mkdir(pStr);
+    if (item.type === 'dir') {
+      VFS.mkdir(target);
+      const n = VFS.node(target);
+      if (n && item.data && item.data.children) {
+        copyTree(item.data, n);
+      }
+    } else {
+      VFS.write(target, item.data ? (item.data.content || '') : '', item.ext);
+    }
+    list.splice(idx, 1);
+    save(list);
+    if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+    if (typeof renderIcons === 'function') renderIcons();
+    if (typeof refreshExplorerWindows === 'function') refreshExplorerWindows();
+    Notify('Корзина', '«' + item.name + '» восстановлен', ICO.refresh, true);
+    return { ok: true };
+  }
+  function restoreAll() {
+    const list = load();
+    if (!list.length) return;
+    [...list].forEach(it => restore(it.id));
+    Notify('Корзина', 'Все элементы восстановлены', ICO.refresh, true);
+  }
+  function emptyTrash() {
+    save([]);
+    if (typeof renderIcons === 'function') renderIcons();
+    if (typeof refreshExplorerWindows === 'function') refreshExplorerWindows();
+    Notify('Корзина', 'Корзина очищена', ICO.trash, true);
+  }
+  function removePermanently(id) {
+    const list = load();
+    const filtered = list.filter(x => x.id !== id);
+    save(filtered);
+    if (typeof renderIcons === 'function') renderIcons();
+    if (typeof refreshExplorerWindows === 'function') refreshExplorerWindows();
+    Notify('Корзина', 'Элемент удалён навсегда', ICO.trash, true);
+  }
+  function updateIcon() {
+    const elDeskTrash = document.querySelector('[data-key="sys:Корзина"] .ico');
+    if (elDeskTrash) {
+      elDeskTrash.innerHTML = isEmpty() ? ICO.trash : ICO.trashFull;
+    }
+  }
+  return { load, save, isEmpty, getItems, moveToTrash, restore, restoreAll, emptyTrash, removePermanently, updateIcon };
+})();
+
+/* ============================================================================
+   УВЕДОМЛЕНИЯ И ЦЕНТР УВЕДОМЛЕНИЙ
+   ========================================================================== */
+const NotifCenter = (() => {
+  const panel = () => $('#notifCenter');
+  const listEl = () => $('#ncList');
+  const clearBtn = () => $('#ncClearBtn');
+
+  function isOpen() {
+    const p = panel();
+    return p && p.style.display !== 'none';
+  }
+
+  function open() {
+    const p = panel();
+    if (!p) return;
+    p.style.display = 'flex';
+    render();
+  }
+
+  function close() {
+    const p = panel();
+    if (!p) return;
+    p.style.display = 'none';
+  }
+
+  function toggle() {
+    if (isOpen()) close();
+    else open();
+  }
+
+  function render() {
+    const l = listEl();
+    if (!l) return;
+    const items = State.notifications || [];
+    if (!items.length) {
+      l.innerHTML = '<div class="nc-empty">Нет новых уведомлений</div>';
+      return;
+    }
+    l.innerHTML = items.map(n => {
+      const timeStr = n.time ? (typeof n.time === 'string' ? n.time : n.time.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })) : '';
+      return '<div class="nc-item" data-id="' + n.id + '">' +
+        '<div class="nc-ico">' + (n.icon || ICO.bell) + '</div>' +
+        '<div class="nc-body">' +
+          '<div class="nc-top">' +
+            '<span class="nc-title">' + esc(n.title) + '</span>' +
+            '<span class="nc-time">' + esc(timeStr) + '</span>' +
+          '</div>' +
+          '<div class="nc-text">' + esc(n.text) + '</div>' +
+        '</div>' +
+        '<button class="nc-del" title="Удалить" data-del="' + n.id + '">✕</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  function init() {
+    const cb = clearBtn();
+    if (cb) {
+      cb.onclick = () => {
+        State.notifications = [];
+        render();
+        Sound.click();
+      };
+    }
+    const l = listEl();
+    if (l) {
+      l.onclick = e => {
+        const delBtn = e.target.closest('[data-del]');
+        if (delBtn) {
+          const id = delBtn.dataset.del;
+          State.notifications = (State.notifications || []).filter(x => String(x.id) !== String(id));
+          render();
+          Sound.click();
+        }
+      };
+    }
+  }
+
+  return { isOpen, open, close, toggle, render, init };
+})();
+
 const Notify = (() => {
   const host = $('#notif');
   return function notify(title, text, icon, silent) {
+    const entry = { id: Date.now() + Math.random(), title, text, icon: icon || ICO.bell, time: new Date() };
+    if (!State.notifications) State.notifications = [];
+    State.notifications.unshift(entry);
+    if (State.notifications.length > 50) State.notifications.pop();
+    if (NotifCenter.isOpen()) NotifCenter.render();
+
     if (State.focus) return;
     const t = el('div', 'toast');
     t.innerHTML = `${icon || ICO.bell}<div><b>${esc(title)}</b><p>${esc(text)}</p></div>`;
@@ -1053,8 +1266,12 @@ const WM = (() => {
       r.maximized = true; r.node.classList.add('max');
     }
   }
-  function close(id) {
+  function close(id, force = false) {
     const r = State.open[id]; if (!r) return;
+    if (!force && r.api && r.api.beforeClose) {
+      const canClose = r.api.beforeClose();
+      if (canClose === false) return;
+    }
     if (r.def.onClose) r.def.onClose(r);
     clearInterval(r.api.iv);
     r.node.classList.add('closing');
@@ -1277,7 +1494,100 @@ const WM = (() => {
     desk.appendChild(overlay);
   }
 
-  return { register, open, close, focus, minimize, toggleMin, unminimize, toggleMax, tile, minimizeAll, applyRect, relayout, fileDialog };
+  function modal({ title = 'Сообщение', message = '', input = false, value = '', placeholder = '', okText = 'ОК', cancelText = 'Отмена', onOk, onCancel } = {}) {
+    const desk = $('#desk') || document.body;
+    const overlay = el('div', 'modal-overlay');
+    const card = el('div', 'modal-card');
+
+    let inputHtml = '';
+    if (input) {
+      inputHtml = '<input class="modal-inp" type="text" placeholder="' + esc(placeholder) + '" value="' + esc(value) + '">';
+    }
+
+    card.innerHTML =
+      '<div class="modal-head">' +
+        '<h4>' + esc(title) + '</h4>' +
+        '<button class="icon-btn modal-close" title="Закрыть">' + (ICO.x || '✕') + '</button>' +
+      '</div>' +
+      (message ? '<div class="modal-msg">' + esc(message) + '</div>' : '') +
+      inputHtml +
+      '<div class="modal-actions">' +
+        (cancelText ? '<button class="btn modal-cancel">' + esc(cancelText) + '</button>' : '') +
+        '<button class="btn primary modal-ok">' + esc(okText) + '</button>' +
+      '</div>';
+
+    overlay.appendChild(card);
+    desk.appendChild(overlay);
+
+    const inpEl = $('.modal-inp', card);
+    if (inpEl) {
+      setTimeout(() => { inpEl.focus(); inpEl.select(); }, 20);
+    } else {
+      const okBtn = $('.modal-ok', card);
+      if (okBtn) setTimeout(() => okBtn.focus(), 20);
+    }
+
+    function cleanup() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+
+    function doOk() {
+      const val = inpEl ? inpEl.value.trim() : true;
+      cleanup();
+      if (onOk) onOk(val);
+    }
+
+    function doCancel() {
+      cleanup();
+      if (onCancel) onCancel();
+    }
+
+    $('.modal-close', card).onclick = doCancel;
+    if (cancelText) {
+      const cBtn = $('.modal-cancel', card);
+      if (cBtn) cBtn.onclick = doCancel;
+    }
+    $('.modal-ok', card).onclick = doOk;
+
+    overlay.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        doCancel();
+      } else if (e.key === 'Enter') {
+        e.stopPropagation();
+        doOk();
+      }
+    });
+
+    return { close: cleanup };
+  }
+
+  function prompt(title, defaultValue = '', message = '') {
+    return new Promise(resolve => {
+      modal({
+        title,
+        message,
+        input: true,
+        value: defaultValue,
+        onOk: val => resolve(val),
+        onCancel: () => resolve(null)
+      });
+    });
+  }
+
+  function confirm(message, title = 'Подтверждение') {
+    return new Promise(resolve => {
+      modal({
+        title,
+        message,
+        input: false,
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false)
+      });
+    });
+  }
+
+  return { register, open, close, focus, minimize, toggleMin, unminimize, toggleMax, tile, minimizeAll, applyRect, relayout, fileDialog, modal, prompt, confirm };
 })();
 
 /* ============================================================================
@@ -1310,7 +1620,7 @@ document.addEventListener('mousedown', e => { if (!e.target.closest('#ctx')) clo
 WM.register({
   id: 'explorer', title: 'Проводник', icon: ICO.folder, w: 880, h: 540,
   init(rec, startPath) {
-    const st = { path: startPath || HOME, sel: null };
+    const st = { path: startPath || HOME, sel: null, view: 'grid' };
     const hist = [];
     rec.body.innerHTML = `<div class="app">
       <div class="ex-top">
@@ -1318,8 +1628,11 @@ WM.register({
         <button class="btn" data-nav="up">↑</button>
         <button class="btn" data-nav="home">Домой</button>
         <div class="crumbs"></div>
+        <button class="btn" data-nav="view" title="Вид: значки или таблица">☰ Вид</button>
         <button class="btn" data-nav="new">${ICO.plus} Папка</button>
         <button class="btn" data-nav="import">${ICO.plus} С компьютера</button>
+        <button class="btn" data-nav="restore-all" style="display:none">${ICO.refresh} Восстановить все</button>
+        <button class="btn" data-nav="empty-trash" style="display:none">${ICO.trash} Очистить</button>
       </div>
       <div style="display:flex;flex:1;min-height:0">
         <div class="app-side"></div>
@@ -1337,36 +1650,44 @@ WM.register({
       { t: 'Локальный диск C:', p: 'C:\\' },
       { t: 'Система', p: 'C:\\Система' },
       { t: 'Program Files', p: 'C:\\Program Files' },
+      { t: 'Корзина', p: 'trash', isTrash: true },
     ];
-    side.innerHTML = QUICK.map(q => `<button class="side-i" data-p="${esc(q.p)}">${ICO.folder}<span>${esc(q.t)}</span></button>`).join('');
-    side.onclick = e => { const b = e.target.closest('.side-i'); if (b) go(b.dataset.p); };
-    $$('.side-i', side).forEach(b => {
-      b.addEventListener('dragover', e => {
-        if (window._lumenDragVfs) {
-          e.preventDefault(); e.stopPropagation();
-          e.dataTransfer.dropEffect = 'move';
-          b.classList.add('drop-target');
-        }
-      });
-      b.addEventListener('dragleave', () => b.classList.remove('drop-target'));
-      b.addEventListener('drop', e => {
-        b.classList.remove('drop-target');
-        const drag = window._lumenDragVfs;
-        if (drag && drag.path && b.dataset.p) {
-          e.preventDefault(); e.stopPropagation();
-          const res = moveVfsItemToFolder(drag.path, b.dataset.p);
-          if (res.ok) {
+    function renderSide() {
+      side.innerHTML = QUICK.map(q => {
+        const ico = q.isTrash ? (Trash.isEmpty() ? ICO.trash : ICO.trashFull) : ICO.folder;
+        return `<button class="side-i${st.path === q.p ? ' on' : ''}" data-p="${esc(q.p)}">${ico}<span>${esc(q.t)}</span></button>`;
+      }).join('');
+      $$('.side-i', side).forEach(b => {
+        b.addEventListener('dragover', e => {
+          if (window._lumenDragVfs) {
+            e.preventDefault(); e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            b.classList.add('drop-target');
+          }
+        });
+        b.addEventListener('dragleave', () => b.classList.remove('drop-target'));
+        b.addEventListener('drop', e => {
+          b.classList.remove('drop-target');
+          const drag = window._lumenDragVfs;
+          if (drag && drag.path && b.dataset.p) {
+            e.preventDefault(); e.stopPropagation();
+            if (b.dataset.p === 'trash') {
+              Trash.moveToTrash(drag.path);
+            } else {
+              moveVfsItemToFolder(drag.path, b.dataset.p);
+            }
             render();
             if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
             if (typeof renderIcons === 'function') renderIcons();
             refreshExplorerWindows();
             Sound.notif();
-            Notify('Проводник', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + (VFS.nameOf(b.dataset.p) || 'папку') + '»', ICO.folder, true);
           }
-        }
-        window._lumenDragVfs = null;
+          window._lumenDragVfs = null;
+        });
       });
-    });
+    }
+    renderSide();
+    side.onclick = e => { const b = e.target.closest('.side-i'); if (b) go(b.dataset.p); };
 
     // Drag-and-drop файлов: как из реального компьютера, так и внутри системы
     files.addEventListener('dragover', e => {
@@ -1378,34 +1699,127 @@ WM.register({
       if (window._lumenDragVfs) {
         const drag = window._lumenDragVfs;
         if (drag && drag.path && drag.sourcePath !== st.path) {
-          const res = moveVfsItemToFolder(drag.path, st.path);
-          if (res.ok) {
-            render();
-            if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
-            if (typeof renderIcons === 'function') renderIcons();
-            refreshExplorerWindows();
-            Sound.notif();
-            Notify('Проводник', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + (VFS.nameOf(st.path) || 'папку') + '»', ICO.folder, true);
+          if (st.path === 'trash') {
+            Trash.moveToTrash(drag.path);
+          } else {
+            const res = moveVfsItemToFolder(drag.path, st.path);
+            if (res.ok) {
+              render();
+              if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+              if (typeof renderIcons === 'function') renderIcons();
+              refreshExplorerWindows();
+              Sound.notif();
+              Notify('Проводник', '«' + (drag.name || VFS.nameOf(drag.path)) + '» перемещён в «' + (VFS.nameOf(st.path) || 'папку') + '»', ICO.folder, true);
+            }
           }
         }
         window._lumenDragVfs = null;
         return;
       }
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        importDroppedFiles(e.dataTransfer.files, st.path, render);
+        if (st.path !== 'trash') importDroppedFiles(e.dataTransfer.files, st.path, render);
       }
     });
 
     rec.api.render = render;
     rec.api.getPath = () => st.path;
+    rec.api.start = p => go(p || HOME);
 
     function go(p, push) {
-      if (!VFS.node(p)) { Notify('Проводник', 'Путь недоступен: ' + p, ICO.folder); Sound.error(); return; }
+      if (p !== 'trash' && !VFS.node(p)) { Notify('Проводник', 'Путь недоступен: ' + p, ICO.folder); Sound.error(); return; }
       if (push !== false) hist.push(st.path);
       st.path = p; st.sel = null; render();
     }
+
     function render() {
+      renderSide();
       files._currentPath = st.path;
+      crumbs.innerHTML = '';
+
+      const isTrash = st.path === 'trash';
+      const btnNew = $('[data-nav="new"]', rec.body);
+      const btnImport = $('[data-nav="import"]', rec.body);
+      const btnRestAll = $('[data-nav="restore-all"]', rec.body);
+      const btnEmpty = $('[data-nav="empty-trash"]', rec.body);
+
+      if (btnNew) btnNew.style.display = isTrash ? 'none' : '';
+      if (btnImport) btnImport.style.display = isTrash ? 'none' : '';
+      if (btnRestAll) btnRestAll.style.display = isTrash ? '' : 'none';
+      if (btnEmpty) btnEmpty.style.display = isTrash ? '' : 'none';
+
+      if (st.view === 'details') {
+        files.classList.add('details-view');
+      } else {
+        files.classList.remove('details-view');
+      }
+
+      if (isTrash) {
+        const rootB = el('button', null, 'Корзина'); rootB.onclick = () => go('trash'); crumbs.appendChild(rootB);
+        files.innerHTML = '';
+        if (st.view === 'details') {
+          files.innerHTML = '<div class="ex-details-head"><span>Имя</span><span>Исходное место</span><span>Дата удаления</span></div>';
+        }
+        const trashItems = Trash.getItems();
+        if (!trashItems.length) {
+          files.innerHTML += '<div style="padding:40px;text-align:center;color:var(--txt-mute);font-size:12.5px;grid-column:1/-1">Корзина пуста</div>';
+          $('.st-count', rec.body).textContent = '0 элементов';
+          $('.st-sel', rec.body).textContent = '';
+          return;
+        }
+
+        trashItems.forEach(item => {
+          const isDir = item.type === 'dir';
+          const ext = item.ext || '';
+          const ico = isDir ? ICO.folder : ({ txt: ICO.txt, png: ICO.png, code: ICO.code, exe: ICO.exe, game: ICO.game, wav: ICO.music, mp3: ICO.music, ogg: ICO.music, flac: ICO.music, m4a: ICO.music, aac: ICO.music }[ext] || ICO.file);
+          const f = el('div', 'fitem');
+          f.dataset.trashId = item.id;
+          f.dataset.name = item.name;
+
+          if (st.view === 'details') {
+            f.innerHTML = '<span class="fitem-name">' + ico + ' ' + esc(item.name) + '</span><span class="fitem-type">' + esc(item.origPath) + '</span><span class="fitem-size">' + esc(item.date) + '</span>';
+          } else {
+            f.innerHTML = ico + '<span>' + esc(item.name) + '</span><small>' + esc(item.date.split(',')[0] || item.date) + '</small>';
+          }
+
+          f.onclick = e => {
+            if (e.ctrlKey || e.metaKey) {
+              f.classList.toggle('sel');
+            } else {
+              $$('.fitem', files).forEach(x => x.classList.remove('sel'));
+              f.classList.add('sel');
+            }
+            updateSelInfo();
+          };
+
+          f.ondblclick = () => {
+            Trash.restore(item.id);
+            render();
+          };
+
+          f.oncontextmenu = e => {
+            e.preventDefault(); e.stopPropagation();
+            if (!f.classList.contains('sel')) {
+              $$('.fitem', files).forEach(x => x.classList.remove('sel'));
+              f.classList.add('sel');
+            }
+            updateSelInfo();
+            openCtx(e.clientX, e.clientY, [
+              { t: 'Восстановить', i: ICO.refresh, f: () => { Trash.restore(item.id); render(); } },
+              { t: 'Удалить навсегда', i: ICO.trash, f: () => { Trash.removePermanently(item.id); render(); } },
+              { sep: true },
+              { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства', 'Исходный путь:\n' + item.origPath + '\nУдалено: ' + item.date, ICO.settings, true) },
+            ]);
+          };
+
+          files.appendChild(f);
+        });
+
+        $('.st-count', rec.body).textContent = trashItems.length + ' элементов';
+        updateSelInfo();
+        return;
+      }
+
+      // Обычный путь VFS
       const r = VFS.list(st.path);
       crumbs.innerHTML = '';
       const rootB = el('button', null, 'Этот компьютер'); rootB.onclick = () => go('C:\\'); crumbs.appendChild(rootB);
@@ -1417,8 +1831,12 @@ WM.register({
         const b = el('button', null, esc(pt)); b.onclick = () => go(target); crumbs.appendChild(b);
       });
       files.innerHTML = '';
+      if (st.view === 'details') {
+        files.innerHTML = '<div class="ex-details-head"><span>Имя</span><span>Тип</span><span>Размер</span></div>';
+      }
+
       if (!r.items.length) {
-        files.innerHTML = '<div style="padding:40px;text-align:center;color:var(--txt-mute);font-size:12.5px;grid-column:1/-1">Папка пуста</div>';
+        files.innerHTML += '<div style="padding:40px;text-align:center;color:var(--txt-mute);font-size:12.5px;grid-column:1/-1">Папка пуста</div>';
       } else {
         const dirs = r.items.filter(i => i.node.type === 'dir').sort((a, b) => a.name.localeCompare(b.name));
         const fls = r.items.filter(i => i.node.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
@@ -1426,7 +1844,16 @@ WM.register({
           const isDir = item.node.type === 'dir';
           const ext = isDir ? '' : (item.node.ext || (item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : ''));
           const ico = isDir ? ICO.folder : ({ txt: ICO.txt, png: ICO.png, code: ICO.code, exe: ICO.exe, game: ICO.game, wav: ICO.music, mp3: ICO.music, ogg: ICO.music, flac: ICO.music, m4a: ICO.music, aac: ICO.music }[ext] || ICO.file);
-          const f = el('div', 'fitem', ico + '<span>' + esc(item.name) + '</span><small>' + (isDir ? 'Папка' : (VFS.sizeOf(item.node) / 1024).toFixed(1) + ' КБ') + '</small>');
+          const f = el('div', 'fitem');
+          const sizeStr = isDir ? 'Папка' : (VFS.sizeOf(item.node) / 1024).toFixed(1) + ' КБ';
+          const typeStr = isDir ? 'Папка с файлами' : (ext ? ext.toUpperCase() + ' файл' : 'Файл');
+
+          if (st.view === 'details') {
+            f.innerHTML = '<span class="fitem-name">' + ico + ' ' + esc(item.name) + '</span><span class="fitem-type">' + esc(typeStr) + '</span><span class="fitem-size">' + esc(sizeStr) + '</span>';
+          } else {
+            f.innerHTML = ico + '<span>' + esc(item.name) + '</span><small>' + esc(sizeStr) + '</small>';
+          }
+
           f.draggable = true;
           f.dataset.path = st.path + '\\' + item.name;
           f.dataset.name = item.name;
@@ -1476,13 +1903,23 @@ WM.register({
             });
           }
 
-          f.onclick = () => {
-            $$('.fitem', files).forEach(x => x.classList.remove('sel')); f.classList.add('sel');
-            st.sel = item.name; $('.st-sel', rec.body).textContent = 'Выбрано: ' + item.name;
+          f.onclick = e => {
+            if (e.ctrlKey || e.metaKey) {
+              f.classList.toggle('sel');
+            } else {
+              $$('.fitem', files).forEach(x => x.classList.remove('sel'));
+              f.classList.add('sel');
+            }
+            updateSelInfo();
           };
           f.ondblclick = () => isDir ? go(st.path + '\\' + item.name) : openFile(item.name, item.node);
           f.oncontextmenu = e => {
-            e.preventDefault(); e.stopPropagation(); f.onclick();
+            e.preventDefault(); e.stopPropagation();
+            if (!f.classList.contains('sel')) {
+              $$('.fitem', files).forEach(x => x.classList.remove('sel'));
+              f.classList.add('sel');
+            }
+            updateSelInfo();
             const full = st.path + '\\' + item.name;
             const ctxItems = [
               { t: 'Открыть', i: ICO.exe, f: () => isDir ? go(full) : openFile(item.name, item.node) },
@@ -1500,12 +1937,27 @@ WM.register({
                   Notify('Ошибка', res.err || 'Не удалось отправить', ICO.folder);
                 }
               } },
-              { t: 'Переименовать', i: ICO.ren, f: () => { const nn = prompt('Новое имя:', item.name); if (nn && nn !== item.name) { VFS.mv(full, st.path + '\\' + nn); render(); if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs(); if (typeof renderIcons === 'function') renderIcons(); } } },
+              { t: 'Переименовать', i: ICO.ren, f: () => {
+                WM.prompt('Переименовать', item.name, 'Введите новое имя:').then(nn => {
+                  if (nn && nn !== item.name) {
+                    VFS.mv(full, st.path + '\\' + nn);
+                    render();
+                    if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+                    if (typeof renderIcons === 'function') renderIcons();
+                  }
+                });
+              } },
               { t: 'Вырезать', i: ICO.copy, f: () => { rec.api.clip = { op: 'cut', path: full, name: item.name }; window._lumenClip = rec.api.clip; Notify('Проводник', 'Вырезано: ' + item.name, ICO.copy, true); } },
               { t: 'Копировать', i: ICO.copy, f: () => { rec.api.clip = { op: 'copy', path: full, name: item.name }; window._lumenClip = rec.api.clip; Notify('Проводник', 'Скопировано: ' + item.name, ICO.copy, true); } },
               (!isDir ? { t: 'Скачать на ПК', i: ICO.folder, f: () => exportVfsFile(full) } : null),
               { sep: true },
-              { t: 'Удалить', i: ICO.trash, f: () => { const res = VFS.rm(full, true); if (!res.ok) { Sound.error(); Notify('Ошибка', res.err, ICO.trash); } render(); if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs(); if (typeof renderIcons === 'function') renderIcons(); } },
+              { t: 'Удалить', i: ICO.trash, f: () => {
+                Trash.moveToTrash(full);
+                render();
+                if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+                if (typeof renderIcons === 'function') renderIcons();
+                refreshExplorerWindows();
+              } },
             ].filter(Boolean);
             openCtx(e.clientX, e.clientY, ctxItems);
           };
@@ -1513,7 +1965,20 @@ WM.register({
         });
         $('.st-count', rec.body).textContent = r.items.length + ' элементов';
       }
+      updateSelInfo();
     }
+
+    function updateSelInfo() {
+      const sel = $$('.fitem.sel', files);
+      if (!sel.length) {
+        $('.st-sel', rec.body).textContent = '';
+      } else if (sel.length === 1) {
+        $('.st-sel', rec.body).textContent = 'Выбрано: ' + (sel[0].dataset.name || '');
+      } else {
+        $('.st-sel', rec.body).textContent = 'Выбрано объектов: ' + sel.length;
+      }
+    }
+
     function openFile(name, node) {
       const full = st.path + '\\' + name;
       const ext = node.ext;
@@ -1523,22 +1988,59 @@ WM.register({
       else if (ext === 'exe' || ext === 'sys') { Sound.error(); Notify('Система', '«' + name + '» — системный файл, запуск заблокирован.', ICO.shield); }
       else WM.open('notepad', { path: full });
     }
+
     $('.ex-top', rec.body).onclick = e => {
       const b = e.target.closest('[data-nav]'); if (!b) return;
       const n = b.dataset.nav;
-      if (n === 'up') { const p = VFS.parentOf(st.path); go(p.length ? 'C:\\' + p.join('\\') : 'C:\\'); }
+      if (n === 'up') {
+        if (st.path === 'trash') { go(HOME); return; }
+        const p = VFS.parentOf(st.path); go(p.length ? 'C:\\' + p.join('\\') : 'C:\\');
+      }
       if (n === 'back') { const p = hist.pop(); if (p) go(p, false); }
       if (n === 'home') go(HOME);
-      if (n === 'new') { const nm = prompt('Имя новой папки:', 'Новая папка'); if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); } }
+      if (n === 'view') {
+        st.view = st.view === 'details' ? 'grid' : 'details';
+        render();
+      }
+      if (n === 'new') {
+        WM.prompt('Новая папка', 'Новая папка', 'Введите имя папки:').then(nm => {
+          if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); }
+        });
+      }
       if (n === 'import') triggerPcUpload(st.path, render);
+      if (n === 'empty-trash') {
+        WM.confirm('Вы действительно хотите очистить корзину?', 'Очистка корзины').then(yes => {
+          if (yes) { Trash.emptyTrash(); render(); }
+        });
+      }
+      if (n === 'restore-all') {
+        Trash.restoreAll();
+        render();
+      }
     };
+
     files.oncontextmenu = e => {
       if (e.target.closest('.fitem')) return;
       e.preventDefault();
+      if (st.path === 'trash') {
+        openCtx(e.clientX, e.clientY, [
+          { t: 'Восстановить все', i: ICO.refresh, f: () => { Trash.restoreAll(); render(); } },
+          { t: 'Очистить корзину', i: ICO.trash, f: () => { Trash.emptyTrash(); render(); } },
+        ]);
+        return;
+      }
       const clip = rec.api.clip || window._lumenClip;
       openCtx(e.clientX, e.clientY, [
-        { t: 'Создать папку', i: ICO.plus, f: () => { const nm = prompt('Имя папки:', 'Новая папка'); if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); } } },
-        { t: 'Создать текстовый файл', i: ICO.note, f: () => { const nm = prompt('Имя файла:', 'новый.txt'); if (nm) { VFS.write(st.path + '\\' + nm, ''); render(); } } },
+        { t: 'Создать папку', i: ICO.plus, f: () => {
+          WM.prompt('Новая папка', 'Новая папка', 'Введите имя папки:').then(nm => {
+            if (nm) { VFS.mkdir(st.path + '\\' + nm); render(); }
+          });
+        } },
+        { t: 'Создать текстовый файл', i: ICO.note, f: () => {
+          WM.prompt('Новый файл', 'новый.txt', 'Введите имя файла:').then(nm => {
+            if (nm) { VFS.write(st.path + '\\' + nm, ''); render(); }
+          });
+        } },
         { t: 'Загрузить с ПК...', i: ICO.folder, f: () => triggerPcUpload(st.path, render) },
         (clip ? { t: 'Вставить', i: ICO.copy, f: () => {
           const srcPath = typeof clip === 'string' ? clip : clip.path;
@@ -1561,6 +2063,124 @@ WM.register({
         { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства', st.path, ICO.folder, true) },
       ].filter(Boolean));
     };
+
+    // Рамочное выделение в Проводнике
+    let exSelBox = el('div', 'ex-sel');
+    exSelBox.style.display = 'none';
+    files.appendChild(exSelBox);
+
+    let startX = 0, startY = 0;
+    let isSelecting = false;
+    let initialSel = new Set();
+    let fitems = [];
+
+    files.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.fitem')) return;
+      const fr = files.getBoundingClientRect();
+      startX = e.clientX - fr.left + files.scrollLeft;
+      startY = e.clientY - fr.top + files.scrollTop;
+      isSelecting = false;
+
+      const allFitems = $$('.fitem', files);
+      initialSel = new Set();
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        allFitems.forEach(fi => { if (fi.classList.contains('sel')) initialSel.add(fi); });
+      } else {
+        allFitems.forEach(fi => fi.classList.remove('sel'));
+      }
+      updateSelInfo();
+
+      fitems = allFitems.map(fi => {
+        const r = fi.getBoundingClientRect();
+        return {
+          el: fi,
+          left: r.left - fr.left + files.scrollLeft,
+          top: r.top - fr.top + files.scrollTop,
+          right: r.right - fr.left + files.scrollLeft,
+          bottom: r.bottom - fr.top + files.scrollTop
+        };
+      });
+
+      const onMouseMove = ev => {
+        const curX = ev.clientX - fr.left + files.scrollLeft;
+        const curY = ev.clientY - fr.top + files.scrollTop;
+        const dx = curX - startX, dy = curY - startY;
+
+        if (!isSelecting) {
+          if (Math.hypot(dx, dy) < 4) return;
+          isSelecting = true;
+          exSelBox.style.display = 'block';
+        }
+
+        const boxL = Math.min(startX, curX);
+        const boxT = Math.min(startY, curY);
+        const boxW = Math.abs(dx);
+        const boxH = Math.abs(dy);
+        const boxR = boxL + boxW;
+        const boxB = boxT + boxH;
+
+        exSelBox.style.left = boxL + 'px';
+        exSelBox.style.top = boxT + 'px';
+        exSelBox.style.width = boxW + 'px';
+        exSelBox.style.height = boxH + 'px';
+
+        fitems.forEach(it => {
+          const hit = !(it.left > boxR || it.right < boxL || it.top > boxB || it.bottom < boxT);
+          if (ev.ctrlKey || ev.metaKey) {
+            if (hit) it.el.classList.add('sel');
+            else it.el.classList.toggle('sel', initialSel.has(it.el));
+          } else {
+            it.el.classList.toggle('sel', hit);
+          }
+        });
+        updateSelInfo();
+      };
+
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        if (isSelecting) {
+          exSelBox.style.display = 'none';
+          isSelecting = false;
+        }
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
+
+    rec.node.tabIndex = 0;
+    rec.node.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        const inp = e.target.closest('input, textarea');
+        if (inp) return;
+        e.preventDefault();
+        $$('.fitem', files).forEach(x => x.classList.add('sel'));
+        updateSelInfo();
+      }
+      if (e.key === 'Delete') {
+        const inp = e.target.closest('input, textarea');
+        if (inp) return;
+        const selItems = $$('.fitem.sel', files);
+        if (!selItems.length) return;
+        e.preventDefault();
+        if (st.path === 'trash') {
+          selItems.forEach(fi => {
+            if (fi.dataset.trashId) Trash.removePermanently(fi.dataset.trashId);
+          });
+        } else {
+          selItems.forEach(fi => {
+            if (fi.dataset.path) Trash.moveToTrash(fi.dataset.path);
+          });
+        }
+        render();
+        if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+        if (typeof renderIcons === 'function') renderIcons();
+        refreshExplorerWindows();
+      }
+    });
+
     render();
   }
 });
@@ -1580,15 +2200,32 @@ WM.register({
         <button class="btn" data-a="new">${ICO.plus} Новый</button>
         <button class="btn" data-a="open">${ICO.folder} Открыть</button>
         <button class="btn" data-a="export">Скачать на ПК</button>
+        <button class="btn" data-a="find" title="Поиск и замена (Ctrl+F)">Поиск</button>
         <span style="flex:1"></span>
         <button class="btn" data-a="wrap">Перенос</button>
         <button class="btn" data-a="font">A±</button>
+      </div>
+      <div class="np-find-bar" style="display:none">
+        <input class="np-find-inp" placeholder="Найти...">
+        <input class="np-replace-inp" placeholder="Заменить на...">
+        <button class="btn sm" data-fb="next">Далее</button>
+        <button class="btn sm" data-fb="replace">Заменить</button>
+        <button class="btn sm" data-fb="all">Все</button>
+        <span class="np-find-count"></span>
+        <button class="icon-btn" data-fb="close" title="Закрыть">✕</button>
       </div>
       <textarea class="np-area" spellcheck="false"></textarea>
       <div class="np-status"><span class="st-pos">Стр 1, стлб 1</span><span class="st-cnt"></span><span class="st-path"></span></div>
     </div>`;
     const ta = $('.np-area', rec.body);
+    const findBar = $('.np-find-bar', rec.body);
+    const findInp = $('.np-find-inp', rec.body);
+    const replInp = $('.np-replace-inp', rec.body);
+    const findCount = $('.np-find-count', rec.body);
+
     ta.value = r0.ok ? r0.content : '';
+    rec.dirty = false;
+
     const upd = () => {
       const upto = ta.value.slice(0, ta.selectionStart).split('\n');
       $('.st-pos', rec.body).textContent = 'Стр ' + upto.length + ', стлб ' + (upto[upto.length - 1].length + 1);
@@ -1599,13 +2236,134 @@ WM.register({
     ta.addEventListener('input', () => { rec.dirty = true; upd(); });
     ta.addEventListener('keyup', upd); ta.addEventListener('click', upd);
     upd();
+
+    function doSave() {
+      VFS.write(st.path, ta.value); rec.dirty = false; upd(); Sound.click();
+      Notify('Блокнот', 'Сохранено: ' + VFS.nameOf(st.path), ICO.note, true);
+    }
+
+    function toggleFind() {
+      if (findBar.style.display === 'none') {
+        findBar.style.display = 'flex';
+        findInp.focus();
+        findInp.select();
+      } else {
+        findBar.style.display = 'none';
+        ta.focus();
+      }
+    }
+
+    function doFind(dir = 1) {
+      const q = findInp.value;
+      if (!q) { findCount.textContent = ''; return; }
+      const text = ta.value;
+      const lower = text.toLowerCase();
+      const qLower = q.toLowerCase();
+      let matches = 0;
+      let pos = 0;
+      while ((pos = lower.indexOf(qLower, pos)) !== -1) {
+        matches++;
+        pos += qLower.length;
+      }
+      if (!matches) {
+        findCount.textContent = '0 совпадений';
+        return;
+      }
+
+      let start = ta.selectionEnd;
+      let idx = lower.indexOf(qLower, start);
+      if (idx === -1) idx = lower.indexOf(qLower, 0);
+
+      if (idx !== -1) {
+        ta.focus();
+        ta.setSelectionRange(idx, idx + q.length);
+        findCount.textContent = matches + ' совп.';
+        upd();
+      }
+    }
+
+    function doReplace() {
+      const q = findInp.value;
+      if (!q) return;
+      const selText = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+      if (selText.toLowerCase() === q.toLowerCase()) {
+        const rep = replInp.value;
+        const start = ta.selectionStart;
+        ta.value = ta.value.slice(0, start) + rep + ta.value.slice(ta.selectionEnd);
+        ta.setSelectionRange(start, start + rep.length);
+        rec.dirty = true;
+        upd();
+      }
+      doFind();
+    }
+
+    function doReplaceAll() {
+      const q = findInp.value;
+      if (!q) return;
+      const rep = replInp.value;
+      const parts = ta.value.split(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'));
+      const count = parts.length - 1;
+      if (count > 0) {
+        ta.value = parts.join(rep);
+        rec.dirty = true;
+        findCount.textContent = 'Заменено: ' + count;
+        upd();
+        Sound.notif();
+      } else {
+        findCount.textContent = '0 совпадений';
+      }
+    }
+
+    findBar.onclick = e => {
+      const b = e.target.closest('[data-fb]');
+      if (!b) return;
+      const fb = b.dataset.fb;
+      if (fb === 'next') doFind();
+      if (fb === 'replace') doReplace();
+      if (fb === 'all') doReplaceAll();
+      if (fb === 'close') toggleFind();
+    };
+
+    findInp.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); doFind(); }
+      if (e.key === 'Escape') { e.preventDefault(); toggleFind(); }
+    };
+
+    replInp.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); doReplace(); }
+      if (e.key === 'Escape') { e.preventDefault(); toggleFind(); }
+    };
+
+    rec.node.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault(); e.stopPropagation();
+        doSave();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault(); e.stopPropagation();
+        toggleFind();
+      }
+    });
+
+    rec.api.beforeClose = () => {
+      if (rec.dirty) {
+        WM.confirm('В документе «' + (VFS.nameOf(st.path) || 'без имени') + '» есть несохранённые изменения. Закрыть без сохранения?', 'Блокнот')
+          .then(yes => {
+            if (yes) {
+              rec.dirty = false;
+              WM.close(rec.id, true);
+            }
+          });
+        return false;
+      }
+      return true;
+    };
+
     $('.app-bar', rec.body).onclick = e => {
       const b = e.target.closest('[data-a]'); if (!b) return;
       const a = b.dataset.a;
-      if (a === 'save') {
-        VFS.write(st.path, ta.value); rec.dirty = false; upd(); Sound.click();
-        Notify('Блокнот', 'Сохранено: ' + VFS.nameOf(st.path), ICO.note, true);
-      }
+      if (a === 'save') doSave();
+      if (a === 'find') toggleFind();
       if (a === 'saveas') {
         WM.fileDialog({
           title: 'Сохранить как', mode: 'save', startPath: VFS.parentOf(st.path).join('\\') || HOME + '\\Документы',
@@ -2303,49 +3061,146 @@ WM.register({
       <div class="app-bar">
         <input type="color" id="pColor" value="#5cc8ff" style="width:36px;height:30px;border:none;background:none">
         <div class="palette">${COLORS.map((c, i) => '<button class="pc ' + (i === 0 ? 'on' : '') + '" data-c="' + c + '" style="background:' + c + '"></button>').join('')}</div>
-        <input type="range" id="pSize" min="1" max="42" value="5" style="max-width:110px">
+        <input type="range" id="pSize" min="1" max="42" value="5" style="max-width:90px">
         <span id="pSizeTxt" class="mono" style="font-size:11px">5 px</span>
+        <button class="btn sm" data-a="undo" title="Отменить (Ctrl+Z)">↶</button>
+        <button class="btn sm" data-a="redo" title="Повторить (Ctrl+Y)">↷</button>
+        <button class="btn sm on" data-tool="brush">Кисть</button>
+        <button class="btn sm" data-tool="line">Линия</button>
+        <button class="btn sm" data-tool="rect">Прямоуг.</button>
+        <button class="btn sm" data-tool="circle">Круг</button>
+        <button class="btn sm" data-tool="eraser">Ластик</button>
         <span style="flex:1"></span>
-        <button class="btn" data-a="eraser">Ластик</button>
+        <button class="btn" data-a="open">${ICO.folder} Открыть</button>
         <button class="btn" data-a="fill">Залить</button>
         <button class="btn" data-a="clear">${ICO.trash} Очистить</button>
         <button class="btn primary" data-a="save">Сохранить</button>
         <button class="btn" data-a="export">Скачать на ПК</button>
       </div>
       <div class="paint-wrap"><canvas id="pCv" width="1280" height="820" style="width:min(100%,1280px);height:auto"></canvas></div>
-      <div class="np-status"><span id="pPos">0, 0</span><span>ЛКМ — рисовать · ПКМ — стирать</span></div>
+      <div class="np-status"><span id="pPos">0, 0</span><span>Инструменты: Кисть, Фигуры, Ластик · Ctrl+Z / Ctrl+Y</span></div>
     </div>`;
     const cv = $('#pCv', rec.body), g = cv.getContext('2d');
     g.fillStyle = '#0d1020'; g.fillRect(0, 0, cv.width, cv.height);
-    let color = '#5cc8ff', size = 5, eraser = false, drawing = false, last = null;
+
+    let color = '#5cc8ff', size = 5, tool = 'brush', drawing = false, last = null, startPos = null, snapshot = null;
+    const undoStack = [];
+    const redoStack = [];
+
+    function pushState() {
+      if (undoStack.length > 25) undoStack.shift();
+      undoStack.push(g.getImageData(0, 0, cv.width, cv.height));
+      redoStack.length = 0;
+    }
+
+    function undo() {
+      if (!undoStack.length) return;
+      redoStack.push(g.getImageData(0, 0, cv.width, cv.height));
+      const prev = undoStack.pop();
+      g.putImageData(prev, 0, 0);
+      Sound.click();
+    }
+
+    function redo() {
+      if (!redoStack.length) return;
+      undoStack.push(g.getImageData(0, 0, cv.width, cv.height));
+      const next = redoStack.pop();
+      g.putImageData(next, 0, 0);
+      Sound.click();
+    }
+
     const pos = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
     const stroke = (a, b, c, w) => {
       g.strokeStyle = c; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round';
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
     };
-    const ink = right => right ? '#0d1020' : (eraser ? '#0d1020' : color);
-    const width = right => right ? size * 2.2 : size;
+    const ink = right => right ? '#0d1020' : (tool === 'eraser' ? '#0d1020' : color);
+    const width = right => right ? size * 2.2 : (tool === 'eraser' ? size * 2.2 : size);
+
     cv.addEventListener('pointerdown', e => {
-      drawing = true; cv.setPointerCapture(e.pointerId); last = pos(e);
-      stroke(last, { x: last.x + .01, y: last.y }, ink(e.button === 2), width(e.button === 2));
+      drawing = true; cv.setPointerCapture(e.pointerId);
+      startPos = pos(e);
+      last = startPos;
+      pushState();
+      snapshot = g.getImageData(0, 0, cv.width, cv.height);
+      if (tool === 'brush' || tool === 'eraser') {
+        stroke(last, { x: last.x + .01, y: last.y }, ink(e.button === 2), width(e.button === 2));
+      }
     });
+
     cv.addEventListener('pointermove', e => {
       const p = pos(e);
       $('#pPos', rec.body).textContent = (p.x | 0) + ', ' + (p.y | 0);
       if (!drawing) return;
-      stroke(last, p, ink(e.buttons === 2), width(e.buttons === 2));
-      last = p;
+
+      if (tool === 'brush' || tool === 'eraser') {
+        stroke(last, p, ink(e.buttons === 2), width(e.buttons === 2));
+        last = p;
+      } else if (tool === 'line') {
+        g.putImageData(snapshot, 0, 0);
+        stroke(startPos, p, ink(e.buttons === 2), width(e.buttons === 2));
+      } else if (tool === 'rect') {
+        g.putImageData(snapshot, 0, 0);
+        g.strokeStyle = ink(e.buttons === 2); g.lineWidth = width(e.buttons === 2);
+        g.strokeRect(Math.min(startPos.x, p.x), Math.min(startPos.y, p.y), Math.abs(p.x - startPos.x), Math.abs(p.y - startPos.y));
+      } else if (tool === 'circle') {
+        g.putImageData(snapshot, 0, 0);
+        g.strokeStyle = ink(e.buttons === 2); g.lineWidth = width(e.buttons === 2);
+        const rx = Math.abs(p.x - startPos.x) / 2, ry = Math.abs(p.y - startPos.y) / 2;
+        const cx = Math.min(startPos.x, p.x) + rx, cy = Math.min(startPos.y, p.y) + ry;
+        g.beginPath(); g.ellipse(cx, cy, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2); g.stroke();
+      }
     });
+
     cv.addEventListener('pointerup', () => { drawing = false; });
     cv.addEventListener('contextmenu', e => e.preventDefault());
+
+    rec.node.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); }
+    });
+
     $('.app-bar', rec.body).onclick = e => {
       const c = e.target.closest('.pc');
-      if (c) { color = c.dataset.c; eraser = false; $$('.pc', rec.body).forEach(x => x.classList.toggle('on', x === c)); return; }
+      if (c) {
+        color = c.dataset.c;
+        if (tool === 'eraser') tool = 'brush';
+        $$('.pc', rec.body).forEach(x => x.classList.toggle('on', x === c));
+        $$('[data-tool]', rec.body).forEach(x => x.classList.toggle('on', x.dataset.tool === tool));
+        return;
+      }
+      const tb = e.target.closest('[data-tool]');
+      if (tb) {
+        tool = tb.dataset.tool;
+        $$('[data-tool]', rec.body).forEach(x => x.classList.toggle('on', x === tb));
+        return;
+      }
       const b = e.target.closest('[data-a]'); if (!b) return;
       const a = b.dataset.a;
-      if (a === 'eraser') { eraser = !eraser; b.classList.toggle('primary', eraser); }
-      if (a === 'fill') { g.fillStyle = color; g.fillRect(0, 0, cv.width, cv.height); }
-      if (a === 'clear') { g.fillStyle = '#0d1020'; g.fillRect(0, 0, cv.width, cv.height); }
+      if (a === 'undo') undo();
+      if (a === 'redo') redo();
+      if (a === 'fill') { pushState(); g.fillStyle = color; g.fillRect(0, 0, cv.width, cv.height); }
+      if (a === 'clear') { pushState(); g.fillStyle = '#0d1020'; g.fillRect(0, 0, cv.width, cv.height); }
+      if (a === 'open') {
+        WM.fileDialog({
+          title: 'Открыть изображение', mode: 'open', startPath: HOME + '\\Изображения', ext: 'png',
+          onSelect(p) {
+            const r = VFS.read(p);
+            if (r.ok && r.content) {
+              const img = new Image();
+              img.onload = () => {
+                pushState();
+                g.fillStyle = '#0d1020';
+                g.fillRect(0, 0, cv.width, cv.height);
+                g.drawImage(img, 0, 0, Math.min(img.width, cv.width), Math.min(img.height, cv.height));
+                Sound.notif();
+                Notify('Paint 12', 'Открыто: ' + VFS.nameOf(p), ICO.paint, true);
+              };
+              img.src = r.content;
+            }
+          }
+        });
+      }
       if (a === 'save') {
         const data = cv.toDataURL('image/png');
         const dir = HOME + '\\Изображения';
@@ -2368,7 +3223,12 @@ WM.register({
       }
     };
     $('#pSize', rec.body).oninput = e => { size = +e.target.value; $('#pSizeTxt', rec.body).textContent = size + ' px'; };
-    $('#pColor', rec.body).oninput = e => { color = e.target.value; eraser = false; $$('.pc', rec.body).forEach(x => x.classList.remove('on')); };
+    $('#pColor', rec.body).oninput = e => {
+      color = e.target.value;
+      if (tool === 'eraser') tool = 'brush';
+      $$('.pc', rec.body).forEach(x => x.classList.remove('on'));
+      $$('[data-tool]', rec.body).forEach(x => x.classList.toggle('on', x.dataset.tool === tool));
+    };
   }
 });
 
@@ -2982,21 +3842,22 @@ WM.register({
         const key = cell.dataset.date;
         const dNum = cell.dataset.d;
         const oldEv = EVENTS[key] || EVENTS[dNum] || '';
-        const res = prompt('Событие на ' + key + ' (оставьте пустым для удаления):', oldEv);
-        if (res !== null) {
-          if (res.trim()) {
-            EVENTS[key] = res.trim();
-            Sound.notif();
-            Notify('Календарь', 'Событие сохранено на ' + key, ICO.cal, true);
-          } else {
-            delete EVENTS[key];
-            delete EVENTS[dNum];
-            Sound.click();
-            Notify('Календарь', 'Событие удалено', ICO.cal, true);
+        WM.prompt('Событие на ' + key, oldEv, 'Введите текст события (оставьте пустым для удаления):').then(res => {
+          if (res !== null) {
+            if (res.trim()) {
+              EVENTS[key] = res.trim();
+              Sound.notif();
+              Notify('Календарь', 'Событие сохранено на ' + key, ICO.cal, true);
+            } else {
+              delete EVENTS[key];
+              delete EVENTS[dNum];
+              Sound.click();
+              Notify('Календарь', 'Событие удалено', ICO.cal, true);
+            }
+            saveEvents(EVENTS);
+            render();
           }
-          saveEvents(EVENTS);
-          render();
-        }
+        });
       };
     }
     render();
@@ -4943,7 +5804,7 @@ const DESK = [
   { t: 'Проводник', i: ICO.folder, f: () => WM.open('explorer') },
   { t: 'Блокнот', i: ICO.note, f: () => WM.open('notepad') },
   { t: 'Заметки', i: ICO.sticky || ICO.note, f: () => WM.open('sticky') },
-  { t: 'Корзина', i: ICO.trash, f: () => Notify('Корзина', 'Корзина пуста', ICO.trash, true) },
+  { t: 'Корзина', i: ICO.trash, f: () => WM.open('explorer', 'trash') },
 ];
 const PINNED = ['browser', 'games', 'explorer', 'terminal', 'settings', 'notepad', 'sticky', 'photos', 'music', 'calc', 'store', 'taskmgr'];
 
@@ -5328,16 +6189,13 @@ function deleteSelectedDeskIcons() {
 
   selUserItems.forEach(iconEl => {
     const itemName = iconEl.dataset.key.slice(5);
-    VFS.rm(DESK_DIR + '\\' + itemName, true);
+    Trash.moveToTrash(DESK_DIR + '\\' + itemName);
     removeDeskItem(itemName);
   });
   syncDeskItemsWithVfs();
   renderIcons();
   refreshExplorerWindows();
   Sound.notif();
-  Notify('Рабочий стол', selUserItems.length === 1
-    ? 'Удалено: ' + selUserItems[0].dataset.key.slice(5)
-    : 'Удалено объектов: ' + selUserItems.length, ICO.trash, true);
 }
 
 function renderIcons() {
@@ -5496,8 +6354,9 @@ function renderIcons() {
         const ctxItems = [
           { t: 'Открыть', i: ICO.exe, f: open },
           { t: 'Переименовать', i: ICO.ren, f: () => {
-              const nn = prompt('Новое имя:', it.name);
-              if (nn && nn !== it.name) renameDeskItem(it.name, nn);
+              WM.prompt('Переименовать', it.name, 'Введите новое имя:').then(nn => {
+                if (nn && nn !== it.name) renameDeskItem(it.name, nn);
+              });
             } },
           { t: 'Вырезать', i: ICO.copy, f: () => { window._lumenClip = { op: 'cut', path: DESK_DIR + '\\' + it.name, name: it.name }; Notify('Рабочий стол', 'Вырезано: ' + it.name, ICO.copy, true); } },
           { t: 'Копировать', i: ICO.copy, f: () => { window._lumenClip = { op: 'copy', path: DESK_DIR + '\\' + it.name, name: it.name }; Notify('Рабочий стол', 'Скопировано: ' + it.name, ICO.copy, true); } },
@@ -5506,13 +6365,12 @@ function renderIcons() {
         ctxItems.push(
           { sep: true },
           { t: 'Удалить', i: ICO.trash, f: () => {
-              VFS.rm(DESK_DIR + '\\' + it.name, true);
+              Trash.moveToTrash(DESK_DIR + '\\' + it.name);
               removeDeskItem(it.name);
               syncDeskItemsWithVfs();
               renderIcons();
               refreshExplorerWindows();
               Sound.notif();
-              Notify('Рабочий стол', 'Удалено: ' + it.name, ICO.trash, true);
             } },
           { t: 'Свойства', i: ICO.settings, f: () => Notify('Свойства',
               it.name + (isDir ? ' — папка' : ' — файл (' + (ext || 'txt') + ')') + '\n' + DESK_DIR, ICO.settings, true) },
@@ -5525,7 +6383,8 @@ function renderIcons() {
       host.appendChild(n);
     } else {
       const d = entry.d;
-      const n = el('div', 'dicon', '<span class="ico">' + d.i + '</span><span>' + esc(d.t) + '</span>');
+      const icoSvg = entry.key === 'sys:Корзина' ? (Trash.isEmpty() ? ICO.trash : ICO.trashFull) : d.i;
+      const n = el('div', 'dicon', '<span class="ico">' + icoSvg + '</span><span>' + esc(d.t) + '</span>');
       n.dataset.key = entry.key;
 
       if (entry.key === 'sys:Корзина') {
@@ -5542,12 +6401,15 @@ function renderIcons() {
           const drag = window._lumenDragVfs;
           if (drag && drag.path) {
             e.preventDefault(); e.stopPropagation();
-            VFS.rm(drag.path, true);
+            Trash.moveToTrash(drag.path);
+            const nm = drag.name || VFS.nameOf(drag.path);
+            if (drag.isUser || (drag.path && drag.path.startsWith(DESK_DIR))) {
+              removeDeskItem(nm);
+            }
             syncDeskItemsWithVfs();
             renderIcons();
             refreshExplorerWindows();
             Sound.notif();
-            Notify('Корзина', '«' + (drag.name || VFS.nameOf(drag.path)) + '» удалён в корзину', ICO.trash, true);
           }
           window._lumenDragVfs = null;
         });
@@ -5569,12 +6431,18 @@ function renderIcons() {
           $$('.dicon', host).forEach(x => x.classList.remove('sel'));
           n.classList.add('sel');
         }
-        openCtx(e.clientX, e.clientY, [
+        const menuItems = [
           { t: 'Открыть', i: ICO.exe, f: d.f },
+        ];
+        if (entry.key === 'sys:Корзина') {
+          menuItems.push({ t: 'Очистить корзину', i: ICO.trash, f: () => Trash.emptyTrash() });
+        }
+        menuItems.push(
           { sep: true },
           { t: 'Создать папку', i: ICO.plus, f: createDeskFolder },
-          { t: 'Свойства', i: ICO.settings, f: () => WM.open('settings') },
-        ]);
+          { t: 'Свойства', i: ICO.settings, f: () => entry.key === 'sys:Корзина' ? Notify('Корзина', 'Элементов в корзине: ' + Trash.getItems().length, ICO.trash, true) : WM.open('settings') }
+        );
+        openCtx(e.clientX, e.clientY, menuItems);
       };
       n.style.left = (entry.col * stepX) + 'px';
       n.style.top = (entry.row * stepY) + 'px';
@@ -5702,7 +6570,27 @@ const Widgets = (() => {
     const txt = (id, v) => { const n = $(id); if (n) n.textContent = v.toFixed(0) + '%'; };
     txt('#vCpu', cpu); txt('#vRam', ram); txt('#vGpu', gpu); txt('#vNet', net);
   }
-  return { toggle, close, isOpen, calendar, stats };
+
+  const CITIES = [
+    { city: 'Москва', temp: '+7°', cond: 'Облачно · ощущается +5°', wind: 'Ветер 4 м/с · влажность 78%' },
+    { city: 'Санкт-Петербург', temp: '+5°', cond: 'Моросящий дождь · ощущается +2°', wind: 'Ветер 7 м/с · влажность 88%' },
+    { city: 'Сочи', temp: '+16°', cond: 'Ясно · ощущается +17°', wind: 'Ветер 2 м/с · влажность 60%' },
+    { city: 'Казань', temp: '+6°', cond: 'Переменная облачность · ощущается +4°', wind: 'Ветер 3 м/с · влажность 70%' },
+    { city: 'Екатеринбург', temp: '+3°', cond: 'Пасмурно · ощущается 0°', wind: 'Ветер 5 м/с · влажность 75%' },
+    { city: 'Владивосток', temp: '+8°', cond: 'Солнечно · ощущается +6°', wind: 'Ветер 6 м/с · влажность 65%' }
+  ];
+  let cityIdx = 0;
+  function cycleWeather() {
+    cityIdx = (cityIdx + 1) % CITIES.length;
+    const c = CITIES[cityIdx];
+    if ($('#wCity')) $('#wCity').textContent = 'Погода · ' + c.city;
+    if ($('#wTemp')) $('#wTemp').textContent = c.temp;
+    if ($('#wCond')) $('#wCond').textContent = c.cond;
+    if ($('#wWind')) $('#wWind').textContent = c.wind;
+    Sound.click();
+  }
+
+  return { toggle, close, isOpen, calendar, stats, cycleWeather };
 })();
 
 /* ============================================================================
@@ -6842,8 +7730,10 @@ function init() {
   $('#searchBtn').onclick = () => { Sound.click(); if (Spot.isOpen()) Spot.close(); else Spot.open(); };
   $('#widgetsBtn').onclick = () => { Sound.click(); Quick.close(); Widgets.toggle(); Widgets.calendar(); Widgets.stats(); };
   $('#clockBtn').onclick = () => { Sound.click(); Quick.close(); Widgets.toggle(); Widgets.calendar(); };
-  $('#notifBtn').onclick = () => { Sound.click(); Quick.toggle(); };
+  $('#notifBtn').onclick = () => { Sound.click(); NotifCenter.toggle(); };
   $('#trayIcons').onclick = () => { Sound.click(); Quick.toggle(); };
+  NotifCenter.init();
+  if ($('#wHero')) $('#wHero').onclick = () => Widgets.cycleWeather();
   $('#showDesk').onclick = () => { Sound.click(); WM.minimizeAll(); };
   $('#langBtn').onclick = () => { Sound.click(); Notify('Язык ввода', 'Переключено: РУС ⇄ ENG', ICO.globe, true); };
   $('#setBtn').onclick = () => { StartMenu.closeMenu(); WM.open('settings'); };
@@ -6866,7 +7756,8 @@ function init() {
 
   document.addEventListener('mousedown', e => {
     if (!e.target.closest('#start') && !e.target.closest('#startBtn')) StartMenu.closeMenu();
-    if (!e.target.closest('#quick') && !e.target.closest('#notifBtn') && !e.target.closest('#trayIcons')) Quick.close();
+    if (!e.target.closest('#quick') && !e.target.closest('#trayIcons')) Quick.close();
+    if (!e.target.closest('#notifCenter') && !e.target.closest('#notifBtn')) NotifCenter.close();
     if (!e.target.closest('#widgets') && !e.target.closest('#widgetsBtn') && !e.target.closest('#clockBtn')) Widgets.close();
     if (!e.target.closest('#spot') && !e.target.closest('#searchBtn')) Spot.close();
   });
