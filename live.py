@@ -581,7 +581,6 @@ class Session(threading.Thread):
             self.ws.send_json({'t': 'ready', 'width': self.w, 'height': self.h})
             init_url = (self.url or '').strip()
             if init_url and init_url not in ('about:blank', 'about:start'):
-                init_url = rewrite_youtube_url(init_url)
                 self.url = init_url
                 try:
                     nav_kwargs = {'url': init_url}
@@ -811,7 +810,6 @@ class Session(threading.Thread):
                     url = 'https://' + url
                 else:
                     url = 'https://www.google.com/search?q=' + urllib.parse.quote(url)
-            url = rewrite_youtube_url(url)
             self.loading = True
             self.url = url
             self._sync()
@@ -910,58 +908,101 @@ class Session(threading.Thread):
         ' ': (32, 'Space'),
     }
 
+    CODE_VK = {
+        'Space': 32, 'Minus': 189, 'Equal': 187, 'BracketLeft': 219,
+        'BracketRight': 221, 'Backslash': 220, 'Semicolon': 186,
+        'Quote': 222, 'Comma': 188, 'Period': 190, 'Slash': 191,
+        'Backquote': 192,
+    }
+
+    @classmethod
+    def _vk(cls, code, key, key_code):
+        if key_code:
+            return key_code
+        if code in cls.CODE_VK:
+            return cls.CODE_VK[code]
+        if code.startswith('Key') and len(code) == 4:
+            return ord(code[3].upper())
+        if code.startswith('Digit') and len(code) == 6:
+            return ord(code[5])
+        if code.startswith('Numpad') and len(code) == 7 and code[6].isdigit():
+            return 96 + int(code[6])
+        if code.startswith('F') and code[1:].isdigit():
+            return 111 + int(code[1:])
+        if len(key) == 1 and ord(key) < 128:
+            return ord(key.upper())
+        return 0
+
     def _key(self, m):
         kind = m.get('type') or 'keyDown'
         key = m.get('key') or ''
         code = m.get('code') or key
         mods = int(m.get('modifiers') or 0)
+        vk_in = int(m.get('keyCode') or 0)
 
-        if key == 'Backspace':
-            self.cdp.send('Input.dispatchKeyEvent', {
-                'type': 'rawKeyDown', 'key': 'Backspace', 'code': 'Backspace',
-                'windowsVirtualKeyCode': 8, 'nativeVirtualKeyCode': 8, 'modifiers': mods
-            }, session=self.sid)
-            self.cdp.send('Input.dispatchKeyEvent', {
-                'type': 'keyUp', 'key': 'Backspace', 'code': 'Backspace',
-                'windowsVirtualKeyCode': 8, 'nativeVirtualKeyCode': 8, 'modifiers': mods
-            }, session=self.sid)
+        if key in ('Dead', 'Process', 'Unidentified', ''):
             return
 
         if key in ('Alt', 'Control', 'Shift', 'Meta'):
             vk = {'Alt': 18, 'Control': 17, 'Shift': 16, 'Meta': 91}[key]
+            ev_type = 'rawKeyDown' if kind == 'keyDown' else 'keyUp'
             self.cdp.send('Input.dispatchKeyEvent', {
-                'type': kind, 'key': key, 'code': code, 'modifiers': mods,
+                'type': ev_type, 'key': key, 'code': code, 'modifiers': mods,
                 'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
             }, session=self.sid)
             return
 
         if key in self.KEYS:
             vk, cd = self.KEYS[key]
-            self.cdp.send('Input.dispatchKeyEvent', {
-                'type': 'rawKeyDown', 'key': key, 'code': cd, 'modifiers': mods,
-                'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
-            }, session=self.sid)
-            if key in ('Enter', 'Tab', ' '):
-                t = {'Enter': '\r', 'Tab': '\t', ' ': ' '}[key]
+            if kind == 'keyDown':
                 self.cdp.send('Input.dispatchKeyEvent', {
-                    'type': 'char', 'key': key, 'code': cd, 'modifiers': mods,
-                    'text': t, 'unmodifiedText': t,
+                    'type': 'rawKeyDown', 'key': key, 'code': cd, 'modifiers': mods,
                     'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
                 }, session=self.sid)
+                if key in ('Enter', 'Tab', ' ') and (mods & 7) == 0:
+                    t = {'Enter': '\r', 'Tab': '\t', ' ': ' '}[key]
+                    self.cdp.send('Input.dispatchKeyEvent', {
+                        'type': 'char', 'key': key, 'code': cd, 'modifiers': mods,
+                        'text': t, 'unmodifiedText': t,
+                        'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+                    }, session=self.sid)
+            else:
+                self.cdp.send('Input.dispatchKeyEvent', {
+                    'type': 'keyUp', 'key': key, 'code': cd, 'modifiers': mods,
+                    'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+                }, session=self.sid)
+            return
+
+        vk = self._vk(code, key, vk_in)
+
+        # Горячие клавиши с Ctrl / Alt / Meta (включая русскую раскладку).
+        if (mods & 7) != 0:
+            ev_type = 'rawKeyDown' if kind == 'keyDown' else 'keyUp'
             self.cdp.send('Input.dispatchKeyEvent', {
-                'type': 'keyUp', 'key': key, 'code': cd, 'modifiers': mods,
+                'type': ev_type, 'key': key, 'code': code, 'modifiers': mods,
                 'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
             }, session=self.sid)
             return
 
         if len(key) == 1:
             if kind == 'keyDown':
-                self.cdp.send('Input.insertText', {'text': key}, session=self.sid)
+                self.cdp.send('Input.dispatchKeyEvent', {
+                    'type': 'keyDown', 'key': key, 'code': code,
+                    'text': key, 'unmodifiedText': key, 'modifiers': mods,
+                    'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+                }, session=self.sid)
+            else:
+                self.cdp.send('Input.dispatchKeyEvent', {
+                    'type': 'keyUp', 'key': key, 'code': code, 'modifiers': mods,
+                    'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
+                }, session=self.sid)
             return
 
         try:
+            ev_type = 'rawKeyDown' if kind == 'keyDown' else 'keyUp'
             self.cdp.send('Input.dispatchKeyEvent', {
-                'type': kind, 'key': key, 'code': code, 'modifiers': mods
+                'type': ev_type, 'key': key, 'code': code, 'modifiers': mods,
+                'windowsVirtualKeyCode': vk, 'nativeVirtualKeyCode': vk
             }, session=self.sid)
         except Exception:
             pass

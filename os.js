@@ -4715,7 +4715,7 @@ WM.register({
       { t: 'Погода', u: 'https://yandex.ru/pogoda/' },
       { t: 'Архив', u: 'https://web.archive.org/' },
     ];
-    const MOD = { 1: 1, 2: 2, 4: 8 };   // Alt, Ctrl, Meta — как ждёт Chromium
+    const MOD = { 1: 1, 2: 2, 4: 4, 8: 8 };   // Alt, Ctrl, Meta, Shift — как ждёт Chromium
 
     rec.body.innerHTML = `<div class="app br">
       <div class="app-bar br-bar">
@@ -5000,7 +5000,7 @@ WM.register({
         y: Math.round((e.clientY - r.top) * canvas.height / Math.max(1, r.height)),
       };
     }
-    function mods(e) { return (e.altKey ? MOD[1] : 0) + (e.ctrlKey ? MOD[2] : 0) + (e.metaKey ? MOD[4] : 0); }
+    function mods(e) { return (e.altKey ? MOD[1] : 0) + (e.ctrlKey ? MOD[2] : 0) + (e.metaKey ? MOD[4] : 0) + (e.shiftKey ? MOD[8] : 0); }
     function btn(e) {
       if (e.button === 0) return { button: 'left', mask: 1 };
       if (e.button === 1) return { button: 'middle', mask: 4 };
@@ -5038,30 +5038,39 @@ WM.register({
       send({ t: 'mouse', type: 'mousePressed', x: p.x, y: p.y, button: b.button, buttons: b.mask, clickCount: 2, modifiers: mods(e) });
       send({ t: 'mouse', type: 'mouseReleased', x: p.x, y: p.y, button: b.button, buttons: 0, clickCount: 2, modifiers: mods(e) });
     });
+    const isSysShortcut = e => (e.altKey && e.key === 'Tab') || e.metaKey || (e.altKey && e.key === 'F4') || (e.ctrlKey && e.altKey && e.key && e.key.toLowerCase() === 't');
     canvas.addEventListener('keydown', e => {
       if (st.mode !== 'live' || !st.ready) return;
+      if (isSysShortcut(e)) return;
+      if (e.isComposing || e.key === 'Dead' || e.key === 'Process' || e.key === 'Unidentified') return;
       if (e.key === 'Escape' || e.key === 'F5' || e.key === 'F11' || e.key === 'F12') return;
       if (e.key === 'Alt' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Meta') return;
       e.preventDefault();
-      send({ t: 'key', type: 'keyDown', key: e.key, code: e.code, modifiers: mods(e) });
+      e.stopPropagation();
+      send({ t: 'key', type: 'keyDown', key: e.key, code: e.code, keyCode: e.keyCode || 0, modifiers: mods(e) });
     });
     canvas.addEventListener('keyup', e => {
       if (st.mode !== 'live' || !st.ready) return;
+      if (isSysShortcut(e)) return;
       if (e.key === 'Alt' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Meta') return;
-      send({ t: 'key', type: 'keyUp', key: e.key, code: e.code, modifiers: mods(e) });
+      e.stopPropagation();
+      send({ t: 'key', type: 'keyUp', key: e.key, code: e.code, keyCode: e.keyCode || 0, modifiers: mods(e) });
     });
 
     rec.api.keys = (key, ev) => {
       if (st.mode !== 'live' || !st.ready) return false;
+      if (ev && ev.target === canvas) return false;
+      if (ev && (ev.isComposing || key === 'Dead' || key === 'Process' || key === 'Unidentified')) return false;
       if (key === 'Escape' || key === 'F5' || key === 'F11' || key === 'F12') return false;
       if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
-      send({ t: 'key', type: 'keyDown', key, code: (ev && ev.code) || key, modifiers: ev ? mods(ev) : 0 });
+      send({ t: 'key', type: 'keyDown', key, code: (ev && ev.code) || key, keyCode: (ev && ev.keyCode) || 0, modifiers: ev ? mods(ev) : 0 });
       return true;
     };
     rec.api.keyup = (key, ev) => {
       if (st.mode !== 'live' || !st.ready) return false;
+      if (ev && ev.target === canvas) return false;
       if (key === 'Alt' || key === 'Control' || key === 'Shift' || key === 'Meta') return false;
-      send({ t: 'key', type: 'keyUp', key, code: (ev && ev.code) || key, modifiers: ev ? mods(ev) : 0 });
+      send({ t: 'key', type: 'keyUp', key, code: (ev && ev.code) || key, keyCode: (ev && ev.keyCode) || 0, modifiers: ev ? mods(ev) : 0 });
       return true;
     };
 
