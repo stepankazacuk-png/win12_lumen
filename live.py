@@ -514,11 +514,11 @@ def rewrite_youtube_url(url):
     m = (re.search(r'youtu\.be/([\w-]{6,})', url)
          or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', url))
     if m:
-        return 'https://www.youtube-nocookie.com/embed/%s?autoplay=1' % m.group(1)
+        return 'http://127.0.0.1:%d/__youtube?v=%s' % (SERVER_PORT, m.group(1))
     m_search = re.search(r'youtube\.com/results\?(?:.*&)?search_query=([^&#]+)', url)
     if m_search:
         return 'http://127.0.0.1:%d/__youtube?q=%s' % (SERVER_PORT, m_search.group(1))
-    if re.search(r'^(?:https?://)?(?:www\.|m\.)?youtube\.com(?:/?|\?.*)?$', url, re.I):
+    if re.search(r'^(?:https?://)?(?:www\.|m\.)?youtube\.com(?:/.*)?$', url, re.I):
         return 'http://127.0.0.1:%d/__youtube' % SERVER_PORT
     return url
 
@@ -581,6 +581,7 @@ class Session(threading.Thread):
             self.ws.send_json({'t': 'ready', 'width': self.w, 'height': self.h})
             init_url = (self.url or '').strip()
             if init_url and init_url not in ('about:blank', 'about:start'):
+                init_url = rewrite_youtube_url(init_url)
                 self.url = init_url
                 try:
                     nav_kwargs = {'url': init_url}
@@ -810,6 +811,7 @@ class Session(threading.Thread):
                     url = 'https://' + url
                 else:
                     url = 'https://www.google.com/search?q=' + urllib.parse.quote(url)
+            url = rewrite_youtube_url(url)
             self.loading = True
             self.url = url
             self._sync()

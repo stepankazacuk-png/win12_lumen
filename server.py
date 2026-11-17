@@ -13,6 +13,7 @@
 Запуск: python3 server.py [порт]
 """
 
+import concurrent.futures
 import errno
 import gzip
 import html as html_mod
@@ -170,6 +171,9 @@ YOUTUBE_HTML = r"""<!DOCTYPE html>
   .card-channel{font-size:12px;color:#aaa}
   .direct-btn{background:rgba(255,255,255,0.08);color:#fff;text-decoration:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:background .15s;border:1px solid rgba(255,255,255,0.14)}
   .direct-btn:hover{background:rgba(255,255,255,0.2);color:#fff}
+  .loading-msg{grid-column:1/-1;text-align:center;padding:48px 20px;color:#aaa;font-size:15px;line-height:1.6}
+  .spinner{width:36px;height:36px;border:3px solid #333;border-top-color:#ff0000;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -208,14 +212,14 @@ YOUTUBE_HTML = r"""<!DOCTYPE html>
     </div>
 
     <div class="chips">
-      <button class="chip active" onclick="filterCat('all')">Все</button>
-      <button class="chip" onclick="filterCat('music')">Музыка</button>
-      <button class="chip" onclick="filterCat('trends')">Тренды</button>
-      <button class="chip" onclick="filterCat('relax')">Природа & Релакс</button>
-      <button class="chip" onclick="filterCat('games')">Игры & Фильмы</button>
+      <button class="chip active" data-cat="all" onclick="filterCat('all')">Все</button>
+      <button class="chip" data-cat="music" onclick="filterCat('music')">Музыка</button>
+      <button class="chip" data-cat="trends" onclick="filterCat('trends')">Тренды</button>
+      <button class="chip" data-cat="relax" onclick="filterCat('relax')">Природа & Релакс</button>
+      <button class="chip" data-cat="games" onclick="filterCat('games')">Игры & Фильмы</button>
     </div>
 
-    <div class="section-title">🔥 Популярные видео</div>
+    <div class="section-title" id="sectionTitle">🔥 Популярные видео</div>
     <div class="grid" id="videoGrid"></div>
   </div>
 
@@ -254,6 +258,10 @@ function play(id, title) {
 function renderVideos(list) {
   const g = document.getElementById('videoGrid');
   g.innerHTML = '';
+  if (!list || !list.length) {
+    g.innerHTML = '<div class="loading-msg">Ничего не найдено. Попробуйте другой запрос.</div>';
+    return;
+  }
   list.forEach(v => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -261,7 +269,7 @@ function renderVideos(list) {
     card.innerHTML = 
       '<div class="card-thumb">' +
         '<img src="https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg" alt="" loading="lazy">' +
-        '<span class="duration">' + v.d + '</span>' +
+        '<span class="duration">' + (v.d || 'HD') + '</span>' +
       '</div>' +
       '<div class="card-body">' +
         '<div class="card-title">' + v.t + '</div>' +
@@ -274,47 +282,154 @@ function renderVideos(list) {
 function filterCat(c) {
   curCat = c;
   document.querySelectorAll('.chip').forEach(b => {
-    b.classList.toggle('active', b.textContent.toLowerCase().includes(c) || (c==='all' && b.textContent==='Все'));
+    b.classList.toggle('active', b.getAttribute('data-cat') === c);
   });
-  if (c === 'all') renderVideos(VIDEOS);
-  else renderVideos(VIDEOS.filter(v => v.c === c));
+  if (c === 'all') {
+    document.getElementById('sectionTitle').textContent = '🔥 Популярные видео';
+    renderVideos(VIDEOS);
+  } else if (c === 'music') {
+    doSearch('музыка клипы', true);
+  } else if (c === 'trends') {
+    doSearch('тренды ютуб', true);
+  } else if (c === 'relax') {
+    doSearch('relax nature 4k', true);
+  } else if (c === 'games') {
+    doSearch('новые трейлеры игр', true);
+  }
 }
 
-function doSearch() {
-  const q = document.getElementById('searchInput').value.trim();
+async function doSearch(overrideQ, keepPlaying) {
+  const input = document.getElementById('searchInput');
+  const q = (overrideQ !== undefined ? overrideQ : input.value).trim();
   if (!q) return;
+  input.value = q;
+
   const m = q.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|v\/|embed\/))([\w-]{6,})/);
   if (m) {
     play(m[1], 'Видео из ссылки');
     return;
   }
+
+  const titleEl = document.getElementById('sectionTitle');
+  titleEl.textContent = '🔍 Поиск: ' + q;
+
+  const g = document.getElementById('videoGrid');
+  g.innerHTML = '<div class="loading-msg"><div class="spinner"></div>Поиск видео на YouTube...</div>';
+
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('q', q);
+    history.replaceState(null, '', url.pathname + url.search);
+  } catch(e) {}
+
+  try {
+    const resp = await fetch('/__youtube_search?q=' + encodeURIComponent(q));
+    const items = await resp.json();
+    if (items && items.length > 0) {
+      renderVideos(items);
+      if (!keepPlaying) {
+        play(items[0].id, items[0].t);
+      }
+      return;
+    }
+  } catch(err) {
+    console.error('Search fetch error:', err);
+  }
+
   const filtered = VIDEOS.filter(v => v.t.toLowerCase().includes(q.toLowerCase()) || v.ch.toLowerCase().includes(q.toLowerCase()));
   if (filtered.length) {
     renderVideos(filtered);
-    play(filtered[0].id, filtered[0].t);
+    if (!keepPlaying) play(filtered[0].id, filtered[0].t);
   } else {
-    location.href = 'https://www.google.com/search?q=site:youtube.com+' + encodeURIComponent(q) + '&igu=1';
+    g.innerHTML = '<div class="loading-msg">По запросу «' + q + '» ничего не найдено.<br><br>' +
+      '<a href="https://rutube.ru/search/?query=' + encodeURIComponent(q) + '" class="rutube-btn" style="display:inline-flex">Искать на RuTube</a></div>';
   }
 }
 
 const initialVid = '{{VIDEO_ID}}';
-const found = VIDEOS.find(v => v.id === initialVid);
-if (found) document.getElementById('playerTitle').textContent = found.t;
-renderVideos(VIDEOS);
+const initialQuery = '{{QUERY}}';
+
+if (initialVid) {
+  const found = VIDEOS.find(v => v.id === initialVid);
+  if (found) {
+    document.getElementById('playerTitle').textContent = found.t;
+  } else {
+    fetch('/__youtube_search?q=' + encodeURIComponent(initialVid))
+      .then(r => r.json())
+      .then(items => {
+        if (items && items.length && items[0].t) {
+          document.getElementById('playerTitle').textContent = items[0].t;
+        }
+      }).catch(() => {});
+  }
+}
+
+if (initialQuery) {
+  doSearch(initialQuery, !!initialVid);
+} else {
+  renderVideos(VIDEOS);
+}
 </script>
 </body>
 </html>"""
 
 
+def get_video_meta(vid):
+    """Получает название и автора видеоролика через noembed oEmbed API."""
+    try:
+        url = 'https://noembed.com/embed?url=' + urllib.parse.quote('https://www.youtube.com/watch?v=' + vid)
+        req = urllib.request.Request(url, headers={'User-Agent': UA})
+        ctx = ssl._create_unverified_context()
+        r = urllib.request.urlopen(req, context=ctx, timeout=3.5)
+        data = json.loads(r.read())
+        title = data.get('title') or ('YouTube Video ' + vid)
+        author = data.get('author_name') or 'YouTube'
+        return {'id': vid, 't': title, 'ch': author, 'd': 'YouTube', 'c': 'video'}
+    except Exception:
+        return {'id': vid, 't': 'YouTube Video (' + vid + ')', 'ch': 'YouTube', 'd': 'HD', 'c': 'video'}
+
+
+def search_youtube_videos(query):
+    """Ищет видео на YouTube через мобильный поиск Яндекс.Видео (без блокировок)
+    и обогащает карточки названиями роликов."""
+    query = (query or '').strip()
+    if not query:
+        return []
+    # Если введён ID или прямая ссылка
+    m = (re.search(r'youtu\.be/([\w-]{6,})', query)
+         or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', query))
+    if m:
+        return [get_video_meta(m.group(1))]
+    if re.fullmatch(r'[\w-]{11}', query):
+        return [get_video_meta(query)]
+
+    url = 'https://yandex.ru/video/touch/search?text=' + urllib.parse.quote(query)
+    req = urllib.request.Request(url, headers={'User-Agent': UA})
+    ctx = ssl._create_unverified_context()
+    results = []
+    try:
+        r = urllib.request.urlopen(req, context=ctx, timeout=4.5)
+        content = r.read().decode('utf-8', errors='ignore')
+        vids = list(dict.fromkeys(re.findall(r'youtube\.com/(?:watch\?v=|embed/)([\w-]{11})', content)))
+        if vids:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+                results = list(executor.map(get_video_meta, vids[:12]))
+    except Exception as e:
+        print('[server] YouTube search error:', e)
+    return results
+
+
 def youtube_embed(url):
-    """Ссылка на ролик → адрес плеера. Плеер разрешает показ в рамке, а сам
-    youtube.com — нет, поэтому ролик открываем через встроенный портал или плеер."""
+    """Ссылка на ролик или страницу → адрес встроенного плеера / портала."""
     if '/embed/' in url:
         return None
     m = (re.search(r'youtu\.be/([\w-]{6,})', url)
          or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', url))
     if m:
-        return 'https://www.youtube-nocookie.com/embed/%s?autoplay=1' % m.group(1)
+        return '/__youtube?v=%s' % m.group(1)
+    m_search = re.search(r'youtube\.com/results\?(?:.*&)?search_query=([^&#]+)', url)
+    if m_search:
+        return '/__youtube?q=%s' % m_search.group(1)
     if re.search(r'youtube\.com(?:\/.*)?$', url, re.I):
         return '/__youtube'
     return None
@@ -412,6 +527,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith('/__env'):
             self.env()
             return
+        if self.path.startswith('/__youtube_search'):
+            self.youtube_search()
+            return
         if self.path.startswith('/__youtube'):
             self.youtube()
             return
@@ -467,6 +585,22 @@ class Handler(SimpleHTTPRequestHandler):
             'proxy': True,
         }
         body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Private-Network', 'true')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def youtube_search(self):
+        """Поиск видео на YouTube: возвращает JSON-список роликов."""
+        q = urllib.parse.urlsplit(self.path).query
+        params = urllib.parse.parse_qs(q)
+        query = (params.get('q') or [''])[0]
+        results = search_youtube_videos(query)
+        body = json.dumps(results, ensure_ascii=False).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))

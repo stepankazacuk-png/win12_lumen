@@ -623,31 +623,50 @@ const VFS = (() => {
     } catch (e) {}
   }
   function loadUserVfs(cb) {
+    let merged = false;
+    function applyData(data) {
+      if (!data || typeof data !== 'object') return;
+      const u = node('C:\\Users\\' + USER);
+      if (!u || !u.children) return;
+      Object.keys(data).forEach(k => {
+        if (!u.children[k]) {
+          u.children[k] = data[k];
+          merged = true;
+        } else if (data[k].type === 'dir' && u.children[k].type === 'dir') {
+          const mergeChildren = (sChild, dChild) => {
+            if (!sChild || !dChild) return;
+            Object.keys(sChild).forEach(ck => {
+              if (!dChild[ck]) {
+                dChild[ck] = sChild[ck];
+                merged = true;
+              } else if (sChild[ck].type === 'dir' && dChild[ck].type === 'dir' && sChild[ck].children && dChild[ck].children) {
+                mergeChildren(sChild[ck].children, dChild[ck].children);
+              }
+            });
+          };
+          if (data[k].children && u.children[k].children) {
+            mergeChildren(data[k].children, u.children[k].children);
+          }
+        } else if (!u.children[k].content && data[k].content) {
+          u.children[k] = data[k];
+          merged = true;
+        }
+      });
+    }
+
     try {
       const raw = localStorage.getItem('lumen.vfs.' + USER);
-      if (raw) {
-        const data = JSON.parse(raw);
-        const u = node('C:\\Users\\' + USER);
-        if (u && data && typeof data === 'object') {
-          Object.keys(data).forEach(k => { u.children[k] = data[k]; });
-        }
-      }
+      if (raw) applyData(JSON.parse(raw));
     } catch (e) {}
+
     VfsDB.get('vfs:' + USER).then(data => {
       if (data && typeof data === 'object') {
-        const u = node('C:\\Users\\' + USER);
-        if (u) {
-          Object.keys(data).forEach(k => {
-            if (!u.children[k] || !u.children[k].content) {
-              u.children[k] = data[k];
-            } else if (data[k] && data[k].content) {
-              u.children[k] = data[k];
-            }
-          });
-        }
+        applyData(data);
       }
-      if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
-      if (typeof renderIcons === 'function') renderIcons();
+      if (merged) {
+        if (typeof syncDeskItemsWithVfs === 'function') syncDeskItemsWithVfs();
+        if (typeof renderIcons === 'function') renderIcons();
+      }
       if (typeof cb === 'function') cb();
     }).catch(() => {
       if (typeof cb === 'function') cb();
@@ -4773,8 +4792,29 @@ WM.register({
     };
     let ws = null, tries = 0, stopped = false, wake = null, wakeT = null;
 
-    const hostOf = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u || ''; } };
-    const niceUrl = u => (u === 'about:blank' ? '' : u || '');
+    const hostOf = u => {
+      if (!u) return '';
+      if (u.includes('/__youtube') || u.includes('youtube-nocookie.com')) return 'youtube.com';
+      try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u || ''; }
+    };
+    const niceUrl = u => {
+      if (!u || u === 'about:blank' || u === 'about:start') return '';
+      if (u.includes('/__youtube')) {
+        try {
+          const parsed = new URL(u);
+          const v = parsed.searchParams.get('v');
+          const q = parsed.searchParams.get('q');
+          if (v) return 'https://www.youtube.com/watch?v=' + v;
+          if (q) return 'https://www.youtube.com/results?search_query=' + q;
+          return 'https://www.youtube.com/';
+        } catch (e) { return 'https://www.youtube.com/'; }
+      }
+      if (u.includes('youtube-nocookie.com/embed/')) {
+        const m = u.match(/embed\/([\w-]{6,})/);
+        if (m) return 'https://www.youtube.com/watch?v=' + m[1];
+      }
+      return u;
+    };
 
     /* ---------- картинка ---------- */
     function draw(blob) {
@@ -4925,7 +4965,7 @@ WM.register({
       let targetSrc = u;
       const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i);
       if (ytMatch) {
-        targetSrc = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1] + '?autoplay=1';
+        targetSrc = '/__youtube?v=' + ytMatch[1];
       } else if (/^https?:\/\/(?:www\.|m\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
         targetSrc = '/__youtube';
       } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
