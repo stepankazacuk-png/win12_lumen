@@ -4794,14 +4794,14 @@ WM.register({
 
     const hostOf = u => {
       if (!u) return '';
-      if (u.includes('/__youtube') || u.includes('youtube-nocookie.com')) return 'youtube.com';
-      try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u || ''; }
+      if (u.includes('/__youtube') || u.includes('youtube.html') || u.includes('youtube-nocookie.com')) return 'youtube.com';
+      try { return new URL(u, window.location.href).host.replace(/^www\./, ''); } catch (e) { return u || ''; }
     };
     const niceUrl = u => {
       if (!u || u === 'about:blank' || u === 'about:start') return '';
-      if (u.includes('/__youtube')) {
+      if (u.includes('/__youtube') || u.includes('youtube.html')) {
         try {
-          const parsed = new URL(u);
+          const parsed = new URL(u, window.location.href);
           const v = parsed.searchParams.get('v');
           const q = parsed.searchParams.get('q');
           if (v) return 'https://www.youtube.com/watch?v=' + v;
@@ -4932,15 +4932,46 @@ WM.register({
         '</form>' +
         '<div class="grid">' +
         '<a class="card" href="https://www.google.com/?igu=1"><span class="badge">🌐</span>Google</a>' +
-        '<a class="card" href="https://ru.wikipedia.org/"><span class="badge">📚</span>Википедия</a>' +
-        '<a class="card" href="https://www.youtube.com/"><span class="badge">▶️</span>YouTube</a>' +
-        '<a class="card" href="https://rutube.ru/"><span class="badge">📺</span>RuTube</a>' +
-        '<a class="card" href="https://github.com/"><span class="badge">🐙</span>GitHub</a>' +
-        '<a class="card" href="https://web.archive.org/"><span class="badge">🏛️</span>Архив</a>' +
-        '<a class="card" href="https://yandex.ru/"><span class="badge">🔍</span>Яндекс</a>' +
+        '<a class="card" href="https://ru.wikipedia.org/"' + (!serverOk ? ' target="_blank"' : '') + '><span class="badge">📚</span>Википедия' + (!serverOk ? ' ↗' : '') + '</a>' +
+        '<a class="card" href="' + (serverOk ? (SERVER_INFO.origin || '') + '/youtube.html' : 'youtube.html') + '"><span class="badge">▶️</span>YouTube</a>' +
+        '<a class="card" href="https://rutube.ru/"' + (!serverOk ? ' target="_blank"' : '') + '><span class="badge">📺</span>RuTube' + (!serverOk ? ' ↗' : '') + '</a>' +
+        '<a class="card" href="https://github.com/"' + (!serverOk ? ' target="_blank"' : '') + '><span class="badge">🐙</span>GitHub' + (!serverOk ? ' ↗' : '') + '</a>' +
+        '<a class="card" href="https://web.archive.org/"' + (!serverOk ? ' target="_blank"' : '') + '><span class="badge">🏛️</span>Архив' + (!serverOk ? ' ↗' : '') + '</a>' +
+        '<a class="card" href="https://yandex.ru/"' + (!serverOk ? ' target="_blank"' : '') + '><span class="badge">🔍</span>Яндекс' + (!serverOk ? ' ↗' : '') + '</a>' +
         '</div>' +
         '<div class="status-line"><span class="dot ' + (serverOk ? '' : 'warn') + '"></span>' +
         (serverOk ? (chromiumOk ? 'Сервер Люмен активен (Chromium готов)' : 'Сервер Люмен активен (прокси-режим)') : 'Автономный режим (прямой веб)') +
+        '</div></body></html>';
+    }
+
+    function getSiteCardHtml(u) {
+      let host = hostOf(u);
+      let title = host || 'Веб-сайт';
+      let icon = '🌐';
+      if (host.includes('yandex')) { title = 'Яндекс'; icon = '🔍'; }
+      else if (host.includes('rutube')) { title = 'RuTube'; icon = '📺'; }
+      else if (host.includes('github')) { title = 'GitHub'; icon = '🐙'; }
+      else if (host.includes('vk.com')) { title = 'ВКонтакте'; icon = '💬'; }
+      else if (host.includes('wikipedia')) { title = 'Википедия'; icon = '📚'; }
+
+      return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+        '<style>' +
+        'body{margin:0;padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;' +
+        'background:radial-gradient(circle at top,#1e293b,#0f172a);color:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90vh;box-sizing:border-box;text-align:center}' +
+        '.badge{font-size:48px;margin-bottom:16px}' +
+        '.title{font-size:24px;font-weight:700;margin-bottom:12px;color:#fff}' +
+        '.desc{font-size:14px;color:#94a3b8;max-width:520px;line-height:1.6;margin-bottom:24px}' +
+        '.card-box{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);padding:24px 30px;border-radius:18px;max-width:540px;width:100%;backdrop-filter:blur(10px)}' +
+        '.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:12px;background:#0284c7;color:#fff;text-decoration:none;font-weight:600;font-size:15px;transition:background .2s}' +
+        '.btn:hover{background:#0369a1}' +
+        '.hint{margin-top:20px;font-size:12.5px;color:#cbd5e1;line-height:1.5;background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.3);padding:10px 16px;border-radius:10px;text-align:left}' +
+        '</style></head><body>' +
+        '<div class="card-box">' +
+        '<div class="badge">' + icon + '</div>' +
+        '<div class="title">' + esc(title) + '</div>' +
+        '<div class="desc">Сайт <b>' + esc(host) + '</b> защищён от прямого встраивания во фреймы политикой безопасности сайта (X-Frame-Options / CSP).</div>' +
+        '<a href="' + esc(u) + '" target="_blank" class="btn">Открыть ' + esc(title) + ' в новой вкладке ↗</a>' +
+        '<div class="hint">💡 <b>Для открытия прямо внутри окна Люмен:</b><br>Запустите файл <code>start-windows.bat</code> (или <code>server.py</code>). Сервер запустит живой Chromium или прокси, и любые сайты будут открываться прямо в этом окне без ограничений.</div>' +
         '</div></body></html>';
     }
 
@@ -4966,9 +4997,13 @@ WM.register({
       let targetSrc = u;
       const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i);
       if (ytMatch) {
-        targetSrc = baseOrigin + '/__youtube?v=' + ytMatch[1];
+        targetSrc = SERVER_INFO.ok ? (baseOrigin + '/__youtube?v=' + ytMatch[1]) : ('youtube.html?v=' + ytMatch[1]);
       } else if (/^https?:\/\/(?:www\.|m\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
-        targetSrc = baseOrigin + '/__youtube';
+        let qMatch = u.match(/[?&]search_query=([^&#]+)/) || u.match(/[?&]q=([^&#]+)/);
+        let qParam = qMatch ? ('?q=' + qMatch[1]) : '';
+        targetSrc = SERVER_INFO.ok ? (baseOrigin + '/__youtube' + qParam) : ('youtube.html' + qParam);
+      } else if (u.includes('youtube.html')) {
+        targetSrc = u;
       } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
         targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
       } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {
@@ -4976,6 +5011,15 @@ WM.register({
       } else {
         if (SERVER_INFO.ok) {
           targetSrc = baseOrigin + '/__proxy?u=' + encodeURIComponent(u);
+        } else {
+          const isGoogle = /google\.[a-z.]+/i.test(u);
+          if (!isGoogle) {
+            frame.removeAttribute('src');
+            frame.srcdoc = getSiteCardHtml(u);
+            status.textContent = 'Готово';
+            hideState();
+            return;
+          }
         }
       }
       try {
@@ -7292,11 +7336,22 @@ function initPowerOn() {
     const val = inp.value;
     if (!name) { if (err) err.textContent = 'Введите имя пользователя.'; if (nui) nui.focus(); return; }
     if (!val) { if (err) err.textContent = 'Введите пароль.'; return; }
+    const rec = Users.get(name);
+    if (!rec) {
+      Sound.error();
+      State.passTries = (State.passTries || 0) + 1;
+      if (err) err.textContent = 'Неверное имя пользователя. Попытка ' + State.passTries + '.';
+      if (nui) nui.focus();
+      $('#poPass').animate(
+        [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }],
+        { duration: 260 });
+      return;
+    }
     const u = Users.verify(name, val);
     if (u) { setCurrentUser(u.name); applyCurrentUser(); passOk(); return; }
     Sound.error();
     State.passTries = (State.passTries || 0) + 1;
-    if (err) err.textContent = 'Неверное имя или пароль. Попытка ' + State.passTries + '.';
+    if (err) err.textContent = 'Неверный пароль. Попытка ' + State.passTries + '.';
     inp.value = '';
     inp.focus();
     $('#poPass').animate(

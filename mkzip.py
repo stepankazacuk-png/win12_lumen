@@ -19,6 +19,7 @@ FILES = [
     ('os.js', 'os.js'),
     ('server.py', 'server.py'),
     ('live.py', 'live.py'),
+    ('youtube.html', 'youtube.html'),
     ('README.txt', 'ЧИТАТЬ.txt'),
     ('start-windows.bat', 'Запустить-Windows.bat'),
     ('start-mac-linux.command', 'Запустить-Linux-macOS.command'),

@@ -535,7 +535,7 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith('/__youtube_search'):
             self.youtube_search()
             return
-        if self.path.startswith('/__youtube'):
+        if self.path.startswith('/__youtube') or self.path.startswith('/youtube.html'):
             self.youtube()
             return
         super().do_GET()
