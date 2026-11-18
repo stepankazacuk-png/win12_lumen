@@ -4962,19 +4962,20 @@ WM.register({
       markActive(u);
       status.textContent = 'Загрузка…';
 
+      const baseOrigin = SERVER_INFO.origin || '';
       let targetSrc = u;
       const ytMatch = u.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i);
       if (ytMatch) {
-        targetSrc = '/__youtube?v=' + ytMatch[1];
+        targetSrc = baseOrigin + '/__youtube?v=' + ytMatch[1];
       } else if (/^https?:\/\/(?:www\.|m\.)?youtube\.com(?:\/.*)?$/i.test(u)) {
-        targetSrc = '/__youtube';
+        targetSrc = baseOrigin + '/__youtube';
       } else if (u.startsWith('https://www.google.com/search') && !u.includes('igu=1')) {
         targetSrc = u + (u.includes('?') ? '&igu=1' : '?igu=1');
       } else if (u === 'https://www.google.com/' || u === 'https://www.google.com') {
         targetSrc = 'https://www.google.com/?igu=1';
       } else {
         if (SERVER_INFO.ok) {
-          targetSrc = '/__proxy?u=' + encodeURIComponent(u);
+          targetSrc = baseOrigin + '/__proxy?u=' + encodeURIComponent(u);
         }
       }
       try {
@@ -4984,6 +4985,15 @@ WM.register({
       frame.onload = () => {
         status.textContent = 'Готово';
         hideState();
+        try {
+          const meta = frame.contentDocument && frame.contentDocument.querySelector('meta[name="x-proxy-url"]');
+          if (meta && meta.content) {
+            st.url = meta.content;
+            if (document.activeElement !== urlIn && !urlIn._editing) urlIn.value = niceUrl(st.url);
+            hostOut.textContent = hostOf(st.url);
+            markActive(st.url);
+          }
+        } catch (e) {}
       };
       frame.onerror = () => {
         status.textContent = 'Ошибка загрузки';

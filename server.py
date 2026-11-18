@@ -119,6 +119,11 @@ BOOTSTRAP = """<script>
     if(u) viaProxy(u);
     return window;
   };
+  try {
+    var origPush = history.pushState, origRepl = history.replaceState;
+    history.pushState = function(s, t, u){ try { return origPush.call(history, s, t, u); } catch(e){} };
+    history.replaceState = function(s, t, u){ try { return origRepl.call(history, s, t, u); } catch(e){} };
+  } catch(e){}
   window.addEventListener('error', function(){}, true);
 })();
 </script>"""
@@ -670,7 +675,7 @@ class Handler(SimpleHTTPRequestHandler):
         if body and ct:
             req.add_header('Content-Type', ct)
 
-        ctx = ssl.create_default_context()
+        ctx = ssl._create_unverified_context()
         try:
             with urllib.request.urlopen(req, timeout=25, context=ctx) as r:
                 raw = r.read(15 * 1024 * 1024)

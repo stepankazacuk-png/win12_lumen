@@ -683,7 +683,7 @@ class Session(threading.Thread):
                 except Exception:
                     pass
             if self.pending_nav:
-                u = self.pending_nav
+                u = rewrite_youtube_url(self.pending_nav)
                 self.pending_nav = None
                 try:
                     self.cdp.send('Page.navigate', {'url': u}, session=self.sid)
