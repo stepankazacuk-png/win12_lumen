@@ -7,249 +7,736 @@
 <title>YouTube — Люмен</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0f0f0f;color:#f1f1f1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding-bottom:40px}
-  header{position:sticky;top:0;z-index:100;background:rgba(15,15,15,0.96);backdrop-filter:blur(10px);border-bottom:1px solid #272727;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px}
-  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:#fff;text-decoration:none;letter-spacing:-0.5px}
+  body{background:#0f0f0f;color:#f1f1f1;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding-bottom:50px;min-height:100vh}
+  
+  /* Верхняя панель YouTube */
+  header{position:sticky;top:0;z-index:100;background:rgba(15,15,15,0.96);backdrop-filter:blur(10px);border-bottom:1px solid #272727;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 20px}
+  .logo-link{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:#fff;text-decoration:none;letter-spacing:-0.5px;cursor:pointer}
   .logo-icon{width:28px;height:20px;background:#ff0000;border-radius:6px;display:flex;align-items:center;justify-content:center}
   .logo-icon svg{width:12px;height:12px;fill:#fff;margin-left:2px}
-  .search-wrap{display:flex;align-items:center;flex:1;max-width:600px;margin:0 12px}
-  .search-box{display:flex;width:100%;border:1px solid #303030;border-radius:40px;overflow:hidden;background:#121212}
-  .search-box input{flex:1;background:transparent;border:none;padding:10px 16px;color:#fff;font-size:14px;outline:none}
-  .search-box button{background:#222;border:none;border-left:1px solid #303030;color:#aaa;padding:0 18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
-  .search-box button:hover{background:#333;color:#fff}
-  .extra-links{display:flex;gap:8px}
-  .rutube-btn{background:#1e293b;color:#38bdf8;border:1px solid #334155;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:6px;transition:all .2s}
-  .rutube-btn:hover{background:#0284c7;color:#fff}
   
-  .container{max-width:1280px;margin:0 auto;padding:20px}
-  .player-section{background:#000;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.6);margin-bottom:24px;border:1px solid #272727}
+  .search-wrap{position:relative;display:flex;align-items:center;flex:1;max-width:620px;margin:0 12px}
+  .search-box{display:flex;width:100%;border:1px solid #303030;border-radius:40px;overflow:hidden;background:#121212;transition:border-color .2s}
+  .search-box:focus-within{border-color:#1c62b9;box-shadow:0 0 0 1px #1c62b9}
+  .search-box input{flex:1;background:transparent;border:none;padding:10px 16px;color:#fff;font-size:14px;outline:none}
+  .clear-btn{background:transparent;border:none;color:#888;font-size:14px;padding:0 10px;cursor:pointer;display:none}
+  .clear-btn:hover{color:#fff}
+  .search-box button.submit-btn{background:#222;border:none;border-left:1px solid #303030;color:#aaa;padding:0 20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
+  .search-box button.submit-btn:hover{background:#333;color:#fff}
+  
+  /* Выпадающие подсказки поиска */
+  .suggestions-box{
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0; right:0;
+    background:#212121;
+    border:1px solid #383838;
+    border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.85);
+    overflow:hidden;
+    z-index:1000;
+    max-height:380px;
+    overflow-y:auto;
+  }
+  .suggestion-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 16px;
+    font-size:14px;
+    color:#f1f1f1;
+    cursor:pointer;
+    transition:background .15s;
+  }
+  .suggestion-item:hover, .suggestion-item.selected{
+    background:#383838;
+  }
+  .suggestion-item svg{
+    width:16px; height:16px; fill:#aaa; flex-shrink:0;
+  }
+  .suggestion-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .suggestion-text b{color:#fff;font-weight:700}
+  
+  .extra-links{display:flex;align-items:center;gap:10px}
+  .rutube-btn{background:#1e293b;color:#38bdf8;border:1px solid #334155;padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:6px;transition:all .2s}
+  .rutube-btn:hover{background:#0284c7;color:#fff}
+  .home-btn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.12);padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .2s}
+  .home-btn:hover{background:rgba(255,255,255,0.16)}
+  
+  /* Контейнер */
+  .container{max-width:1300px;margin:0 auto;padding:20px}
+  
+  /* Плеер (скрыт на главном экране) */
+  .player-section{
+    background:#000;
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow:0 10px 40px rgba(0,0,0,0.8);
+    margin-bottom:28px;
+    border:1px solid #272727;
+    animation:fadeIn .25s ease-out;
+  }
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
   .player-box{position:relative;width:100%;padding-top:56.25%}
   .player-box iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
-  .player-meta{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:#181818}
-  .current-title{font-size:16px;font-weight:600;color:#fff}
-  .status-badge{font-size:12px;color:#22c55e;display:flex;align-items:center;gap:6px;background:rgba(34,197,94,0.12);padding:4px 10px;border-radius:12px}
-
-  .chips{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;margin-bottom:20px}
+  .player-meta{padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:#181818}
+  .current-title{font-size:18px;font-weight:700;color:#fff;line-height:1.3}
+  .player-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  .player-author-row{display:flex;align-items:center;gap:12px}
+  .player-avatar{width:42px;height:42px;border-radius:50%;background:#ff0000;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:16px}
+  .player-author-info{display:flex;flex-direction:column}
+  .player-author-name{font-size:15px;font-weight:600;color:#fff}
+  .player-author-subs{font-size:12px;color:#aaa}
+  
+  .player-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .action-btn{
+    background:rgba(255,255,255,0.08);
+    color:#fff;
+    border:1px solid rgba(255,255,255,0.12);
+    padding:8px 14px;
+    border-radius:20px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    text-decoration:none;
+    transition:background .15s;
+  }
+  .action-btn:hover{background:rgba(255,255,255,0.18)}
+  .action-btn.close-btn{background:rgba(239,68,68,0.18);border-color:rgba(239,68,68,0.4);color:#fca5a5}
+  .action-btn.close-btn:hover{background:rgba(239,68,68,0.3);color:#fff}
+  
+  /* Блок канала в поиске */
+  .channel-card{
+    background:#181818;
+    border:1px solid #282828;
+    border-radius:18px;
+    padding:24px;
+    margin-bottom:24px;
+    display:flex;
+    align-items:center;
+    gap:24px;
+    box-shadow:0 6px 24px rgba(0,0,0,0.5);
+    transition:border-color .2s;
+  }
+  .channel-card:hover{border-color:#444}
+  .channel-avatar-wrap{position:relative;flex-shrink:0}
+  .channel-avatar{
+    width:92px; height:92px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2.5px solid #ff0000;
+    background:#222;
+    display:flex;align-items:center;justify-content:center;
+    font-size:32px;font-weight:700;color:#fff;
+  }
+  .channel-details{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+  .channel-name-row{display:flex;align-items:center;gap:8px}
+  .channel-name{font-size:21px;font-weight:700;color:#fff;letter-spacing:-0.3px}
+  .verified-icon{width:18px;height:18px;fill:#aaa;flex-shrink:0}
+  .channel-meta{font-size:13.5px;color:#aaa;font-weight:500}
+  .channel-desc{font-size:13px;color:#cbd5e1;line-height:1.45;margin-top:4px}
+  .sub-btn{
+    background:#fff;
+    color:#0f0f0f;
+    border:none;
+    padding:10px 22px;
+    border-radius:24px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:all .2s;
+  }
+  .sub-btn:hover{background:#d9d9d9}
+  .sub-btn.subscribed{background:#272727;color:#f1f1f1;border:1px solid #3f3f3f}
+  
+  /* Категории (чипсы) */
+  .chips{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;margin-bottom:22px}
   .chip{background:#272727;color:#f1f1f1;border:none;padding:8px 16px;border-radius:18px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .2s}
   .chip:hover,.chip.active{background:#fff;color:#000}
-
-  .section-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:20px}
-  .card{background:#181818;border-radius:12px;overflow:hidden;cursor:pointer;border:1px solid #262626;transition:transform .18s,border-color .18s,box-shadow .18s;display:flex;flex-direction:column}
-  .card:hover{transform:translateY(-4px);border-color:#555;box-shadow:0 10px 24px rgba(0,0,0,0.5)}
+  
+  /* Сетка видео */
+  .section-title{font-size:19px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:22px}
+  .card{background:#181818;border-radius:14px;overflow:hidden;cursor:pointer;border:1px solid #262626;transition:transform .18s,border-color .18s,box-shadow .18s;display:flex;flex-direction:column}
+  .card:hover{transform:translateY(-4px);border-color:#555;box-shadow:0 12px 28px rgba(0,0,0,0.6)}
   .card-thumb{position:relative;width:100%;padding-top:56.25%;background:#000}
   .card-thumb img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
-  .duration{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px}
-  .card-body{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}
-  .card-title{font-size:14px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .card-channel{font-size:12px;color:#aaa}
-  .direct-btn{background:rgba(255,255,255,0.08);color:#fff;text-decoration:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:background .15s;border:1px solid rgba(255,255,255,0.14)}
-  .direct-btn:hover{background:rgba(255,255,255,0.2);color:#fff}
-  .loading-msg{grid-column:1/-1;text-align:center;padding:48px 20px;color:#aaa;font-size:15px;line-height:1.6}
+  .duration{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.85);color:#fff;font-size:11.5px;font-weight:600;padding:2px 6px;border-radius:4px}
+  .card-footer{padding:14px 12px;display:flex;gap:12px;flex:1}
+  .card-avatar{width:36px;height:36px;border-radius:50%;background:#ff0000;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff}
+  .card-body{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
+  .card-title{font-size:14px;font-weight:600;line-height:1.35;color:#fff;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .card-channel{font-size:12.5px;color:#aaa;display:flex;align-items:center;gap:4px}
+  .card-meta{font-size:11.5px;color:#888}
+  
+  .loading-msg{grid-column:1/-1;text-align:center;padding:50px 20px;color:#aaa;font-size:15px;line-height:1.6}
   .spinner{width:36px;height:36px;border:3px solid #333;border-top-color:#ff0000;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px}
   @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
+
   <header>
-    <a href="youtube.html" class="logo">
+    <div class="logo-link" onclick="goHome()">
       <div class="logo-icon"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"></polygon></svg></div>
       <span>YouTube</span>
-    </a>
+    </div>
+
     <div class="search-wrap">
-      <form class="search-box" id="searchForm" onsubmit="event.preventDefault();doSearch();">
-        <input type="text" id="searchInput" placeholder="Поиск на YouTube или ссылка на ролик...">
-        <button type="submit" title="Найти">
+      <form class="search-box" id="searchForm" onsubmit="event.preventDefault();submitSearch();">
+        <input type="text" id="searchInput" placeholder="Поиск на YouTube или имя блогера (например, Самый Сахар)..." autocomplete="off">
+        <button type="button" class="clear-btn" id="clearBtn" onclick="clearSearch()">✕</button>
+        <button type="submit" class="submit-btn" title="Найти">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </button>
       </form>
+      <!-- Выпадающий список подсказок -->
+      <div class="suggestions-box" id="suggestionsBox" style="display:none"></div>
     </div>
+
     <div class="extra-links">
-      <a href="https://rutube.ru/" class="rutube-btn">📺 RuTube</a>
+      <button class="home-btn" onclick="goHome()">Главная</button>
+      <a href="https://rutube.ru/" target="_blank" class="rutube-btn">📺 RuTube ↗</a>
     </div>
   </header>
 
   <div class="container">
-    <div class="player-section">
+    <!-- Плеер видео (скрыт на главном экране) -->
+    <div class="player-section" id="playerSection" style="display:none">
       <div class="player-box">
-        <iframe id="mainPlayer" src="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ?autoplay=1"
+        <iframe id="mainPlayer" src=""
                 allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                 referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
       </div>
       <div class="player-meta">
-        <span class="current-title" id="playerTitle">Сейчас играет</span>
-        <div style="display:flex;align-items:center;gap:10px">
-          <a id="directBtn" href="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ?autoplay=1" class="direct-btn">⛶ Смотреть напрямую</a>
-          <span class="status-badge"><span style="width:6px;height:6px;border-radius:50%;background:#22c55e"></span>Стабильный плеер</span>
+        <div class="current-title" id="playerTitle">Название видео</div>
+        <div class="player-toolbar">
+          <div class="player-author-row">
+            <div class="player-avatar" id="playerAvatar">YT</div>
+            <div class="player-author-info">
+              <span class="player-author-name" id="playerAuthor">Канал автора</span>
+              <span class="player-author-subs" id="playerSubs">Подтверждённый блогер</span>
+            </div>
+            <button class="sub-btn" id="playerSubBtn" onclick="toggleSub(this)">Подписаться</button>
+          </div>
+          <div class="player-actions">
+            <button class="action-btn" onclick="likeVideo(this)">👍 <span id="likeCount">42 тыс.</span></button>
+            <a id="directBtn" href="#" target="_blank" class="action-btn">⛶ Смотреть напрямую</a>
+            <button class="action-btn close-btn" onclick="closePlayer()">✕ Закрыть плеер</button>
+          </div>
         </div>
       </div>
     </div>
 
+    <!-- Категории (чипсы) -->
     <div class="chips">
       <button class="chip active" data-cat="all" onclick="filterCat('all')">Все</button>
-      <button class="chip" data-cat="music" onclick="filterCat('music')">Музыка</button>
-      <button class="chip" data-cat="trends" onclick="filterCat('trends')">Тренды</button>
-      <button class="chip" data-cat="relax" onclick="filterCat('relax')">Природа & Релакс</button>
-      <button class="chip" data-cat="games" onclick="filterCat('games')">Игры & Фильмы</button>
+      <button class="chip" data-cat="sahar" onclick="filterCat('sahar')">🍬 Самый Сахар</button>
+      <button class="chip" data-cat="bloggers" onclick="filterCat('bloggers')">🌟 Блогеры</button>
+      <button class="chip" data-cat="music" onclick="filterCat('music')">🎵 Музыка</button>
+      <button class="chip" data-cat="games" onclick="filterCat('games')">🎮 Игры & Фильмы</button>
+      <button class="chip" data-cat="challenges" onclick="filterCat('challenges')">🏆 Челленджи</button>
+      <button class="chip" data-cat="relax" onclick="filterCat('relax')">🌿 Релакс 4K</button>
     </div>
+
+    <!-- Карточка канала блогера (показывается при поиске автора) -->
+    <div id="channelCardContainer" style="display:none"></div>
 
     <div class="section-title" id="sectionTitle">🔥 Популярные видео</div>
     <div class="grid" id="videoGrid"></div>
   </div>
 
 <script>
-const VIDEOS = [
-  { id: 'dQw4w9WgXcQ', t: 'Rick Astley - Never Gonna Give You Up', ch: 'Rick Astley', d: '3:33', c: 'music' },
-  { id: 'jfKfPfyJRdk', t: 'Lofi Hip Hop Radio - Beats to Relax/Study to', ch: 'Lofi Girl', d: 'LIVE', c: 'music' },
-  { id: 'fJ9rUzIMcZQ', t: 'Queen - Bohemian Rhapsody (Official Video)', ch: 'Queen Official', d: '5:59', c: 'music' },
-  { id: 'UDVtMYqUAyw', t: 'Interstellar Main Theme - Hans Zimmer', ch: 'Hans Zimmer', d: '4:56', c: 'music' },
-  { id: 'LXb3EKWsInQ', t: 'Campfire by the River 4K - Relaxing Nature', ch: 'Calm Sound', d: '3:00:00', c: 'relax' },
-  { id: 'aqz-KE-bpKQ', t: 'Big Buck Bunny 4K 60fps Ultra HD', ch: 'Blender Studio', d: '10:34', c: 'trends' },
-  { id: 'N_x_jRZZtps', t: 'Minecraft - 15th Anniversary Official Animation', ch: 'Minecraft', d: '1:45', c: 'games' },
-  { id: '8X2kIfS6fb8', t: 'Cyberpunk 2077 - Phantom Liberty Official Trailer', ch: 'Cyberpunk 2077', d: '2:31', c: 'games' },
-  { id: 'L_LUpnjgPso', t: 'Earth from Space - 4K ISS Live Stream', ch: 'Space Videos', d: 'LIVE', c: 'relax' },
-  { id: '2Vv-BfVoq4g', t: 'Ed Sheeran - Perfect (Official Music Video)', ch: 'Ed Sheeran', d: '4:39', c: 'music' },
-  { id: 'kJQP7kiw5Fk', t: 'Luis Fonsi - Despacito ft. Daddy Yankee', ch: 'Luis Fonsi', d: '4:41', c: 'music' },
-  { id: 'hTWKbfoikeg', t: 'Nirvana - Smells Like Teen Spirit', ch: 'Nirvana', d: '4:38', c: 'music' }
+/* ---------------- База популярных каналов и авторов ---------------- */
+const CHANNELS = {
+  'самый сахар': {
+    name: 'Самый сахар',
+    handle: '@sugarsvyat',
+    subs: '2,48 млн подписчиков',
+    videos: '430 видео',
+    avatar: 'https://i.ytimg.com/vi/Xu5kVqk6QNA/hqdefault.jpg',
+    initials: 'СС',
+    color: '#f59e0b',
+    desc: 'Официальный канал «Самый сахар»! Сладкие эксперименты, кулинарные челленджи, гигантские конфеты, редкие сладости со всего мира и море позитива!'
+  },
+  'mrbeast': {
+    name: 'MrBeast',
+    handle: '@MrBeast',
+    subs: '318 млн подписчиков',
+    videos: '820 видео',
+    avatar: 'https://i.ytimg.com/vi/YwGiP6f-ei8/hqdefault.jpg',
+    initials: 'MB',
+    color: '#0284c7',
+    desc: 'Официальный русскоязычный дубляж! Самые масштабные челленджи, выживания, невероятные эксперименты и помощь людям.'
+  },
+  'а4': {
+    name: 'А4',
+    handle: '@a4omg',
+    subs: '58 млн подписчиков',
+    videos: '1,2 тыс. видео',
+    avatar: 'https://i.ytimg.com/vi/pIZlew_5c4g/hqdefault.jpg',
+    initials: 'А4',
+    color: '#e11d48',
+    desc: 'Официальный канал Влада А4! Новые масштабные челленджи, 24 часа, побеги и весёлые пранки каждый день.'
+  },
+  'куплинов': {
+    name: 'Kuplinov ► Play',
+    handle: '@kuplinovplay',
+    subs: '16,2 млн подписчиков',
+    videos: '7,8 тыс. видео',
+    avatar: 'https://i.ytimg.com/vi/8X2kIfS6fb8/hqdefault.jpg',
+    initials: 'KP',
+    color: '#9333ea',
+    desc: 'Канал Kuplinov ► Play. Прохождение самых захватывающих игр, новинки, хорроры, инди и море позитива.'
+  }
+};
+
+/* ---------------- База популярных видео ---------------- */
+const POPULAR_VIDEOS = [
+  { id: 'Xu5kVqk6QNA', t: 'Пробую самые РЕДКИЕ СЛАДОСТИ Kinder. Нашел СЕКРЕТНЫЙ ПРОДУКТ!', ch: 'Самый сахар', d: '18:14', c: 'sahar', views: '2,4 млн просмотров • 3 дня назад', avatar: 'СС', color: '#f59e0b' },
+  { id: 'YwGiP6f-ei8', t: '$1 против $1,000,000,000 Отеля!', ch: 'MrBeast', d: '24:10', c: 'bloggers', views: '48 млн просмотров • 1 неделю назад', avatar: 'MB', color: '#0284c7' },
+  { id: 'pzYPYhz-_8E', t: 'Я ел 100 часов только САМУЮ ВРЕДНУЮ ЕДУ (зря)', ch: 'Самый сахар', d: '22:45', c: 'sahar', views: '3,8 млн просмотров • 2 недели назад', avatar: 'СС', color: '#f59e0b' },
+  { id: 'pIZlew_5c4g', t: '24 ЧАСА В БАТУТНОМ ЦЕНТРЕ ЧЕЛЛЕНДЖ!', ch: 'А4', d: '18:30', c: 'bloggers', views: '9,2 млн просмотров • 5 дней назад', avatar: 'А4', color: '#e11d48' },
+  { id: '8X2kIfS6fb8', t: 'Cyberpunk 2077 - Phantom Liberty Official Trailer 4K', ch: 'CD PROJEKT RED', d: '2:31', c: 'games', views: '8,4 млн просмотров • 1 месяц назад', avatar: 'CP', color: '#eab308' },
+  { id: 'jfKfPfyJRdk', t: 'Lofi Hip Hop Radio - Beats to Relax/Study to', ch: 'Lofi Girl', d: 'LIVE', c: 'music', views: '45 тыс. зрителей • Прямой эфир', avatar: 'LG', color: '#ec4899' },
+  { id: 'O4N4bYrXxuc', t: 'ГИГАНТСКИЙ МАРМЕЛАДНЫЙ МИШКА ВЕСОМ 25 КГ против МЕНЯ', ch: 'Самый сахар', d: '16:30', c: 'sahar', views: '4,1 млн просмотров • 1 месяц назад', avatar: 'СС', color: '#f59e0b' },
+  { id: 'bfOdbzR55ys', t: 'Я выжил 7 дней в открытом океане', ch: 'MrBeast', d: '28:15', c: 'bloggers', views: '64 млн просмотров • 3 недели назад', avatar: 'MB', color: '#0284c7' },
+  { id: 'UDVtMYqUAyw', t: 'Interstellar Main Theme - Hans Zimmer (Live in Prague)', ch: 'Hans Zimmer', d: '4:56', c: 'music', views: '75 млн просмотров • 2 года назад', avatar: 'HZ', color: '#64748b' },
+  { id: 'LXb3EKWsInQ', t: 'Campfire by the River 4K - Relaxing Nature Sounds & Crackling Fire', ch: 'Calm Sound', d: '3:00:00', c: 'relax', views: '14 млн просмотров • 1 год назад', avatar: 'CS', color: '#10b981' },
+  { id: 'trIMQFGfECI', t: 'ПОБЕГ ИЗ САМОЙ СТРОГОЙ ТЮРЬМЫ ЧЕЛЛЕНДЖ!', ch: 'А4', d: '21:12', c: 'bloggers', views: '12 млн просмотров • 2 недели назад', avatar: 'А4', color: '#e11d48' },
+  { id: 'fJ9rUzIMcZQ', t: 'Queen - Bohemian Rhapsody (Official Video Remastered)', ch: 'Queen Official', d: '5:59', c: 'music', views: '1,8 млрд просмотров • 15 лет назад', avatar: 'Q', color: '#f43f5e' },
+  { id: '8JL9wRV-PxE', t: 'САМЫЕ КИСЛЫЕ КОНФЕТЫ В МИРЕ! ПЕРВЫЙ КТО ЗАПЛАЧЕТ ПОЛУЧИТ ПРИЗ', ch: 'Самый сахар', d: '14:50', c: 'sahar', views: '5,0 млн просмотров • 2 месяца назад', avatar: 'СС', color: '#f59e0b' },
+  { id: 'N_x_jRZZtps', t: 'Minecraft - 15th Anniversary Official Animation', ch: 'Minecraft', d: '1:45', c: 'games', views: '22 млн просмотров • 5 месяцев назад', avatar: 'MC', color: '#22c55e' },
+  { id: 'dQw4w9WgXcQ', t: 'Rick Astley - Never Gonna Give You Up (Official Music Video)', ch: 'Rick Astley', d: '3:33', c: 'music', views: '1,5 млрд просмотров • 14 лет назад', avatar: 'RA', color: '#3b82f6' }
+];
+
+/* Подсказки поиска (автодополнение) */
+const LOCAL_SUGGESTIONS = [
+  'самый сахар', 'самый сахар пельмени', 'самый сахар роллы', 'самый сахар лапша',
+  'самый сахар вредная еда', 'самый сахар киндер', 'самый сахар сладости', 'самый сахар реакция',
+  'mrbeast на русском', 'mrbeast выживание', 'mrbeast отель', 'mrbeast челлендж',
+  'влад а4', 'а4 24 часа', 'а4 челленджи', 'а4 побег из тюрьмы',
+  'куплинов плей', 'куплинов хоррор', 'куплинов смешные моменты',
+  'новинки музыки 2026', 'lofi girl hip hop radio', 'cyberpunk 2077 трейлер', 'queen bohemian rhapsody'
 ];
 
 let curCat = 'all';
+let currentPlayingId = '';
+let searchDebounceTimer = null;
+let selectedSuggestionIndex = -1;
 
-function play(id, title) {
+/* ---------------- Воспроизведение видео ---------------- */
+function play(id, title, channelName, avatarText, avatarColor) {
+  if (!id) return;
+  currentPlayingId = id;
+  const section = document.getElementById('playerSection');
   const p = document.getElementById('mainPlayer');
+  
+  section.style.display = 'block';
   p.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
-  document.getElementById('playerTitle').textContent = title || 'Воспроизведение';
+  
+  document.getElementById('playerTitle').textContent = title || 'Воспроизведение видео';
+  const authorEl = document.getElementById('playerAuthor');
+  if (channelName) authorEl.textContent = channelName;
+  
+  const avEl = document.getElementById('playerAvatar');
+  avEl.textContent = avatarText || (channelName ? channelName.slice(0, 2).toUpperCase() : 'YT');
+  if (avatarColor) avEl.style.background = avatarColor;
+  
   const dBtn = document.getElementById('directBtn');
   if (dBtn) dBtn.href = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
+  
   try {
     const url = new URL(location.href);
     url.searchParams.set('v', id);
     history.replaceState(null, '', url.pathname + url.search);
   } catch(e) {}
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function closePlayer() {
+  const section = document.getElementById('playerSection');
+  const p = document.getElementById('mainPlayer');
+  p.src = '';
+  section.style.display = 'none';
+  currentPlayingId = '';
+  try {
+    const url = new URL(location.href);
+    url.searchParams.delete('v');
+    history.replaceState(null, '', url.pathname + url.search);
+  } catch(e) {}
+}
+
+function likeVideo(btn) {
+  btn.style.color = '#38bdf8';
+  btn.style.borderColor = '#38bdf8';
+  document.getElementById('likeCount').textContent = '43 тыс.';
+}
+
+function toggleSub(btn) {
+  if (btn.classList.contains('subscribed')) {
+    btn.classList.remove('subscribed');
+    btn.textContent = 'Подписаться';
+  } else {
+    btn.classList.add('subscribed');
+    btn.textContent = '✓ Вы подписаны';
+  }
+}
+
+function goHome() {
+  closePlayer();
+  document.getElementById('channelCardContainer').style.display = 'none';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('clearBtn').style.display = 'none';
+  hideSuggestions();
+  filterCat('all');
+}
+
+/* ---------------- Отрисовка списка роликов ---------------- */
 function renderVideos(list) {
   const g = document.getElementById('videoGrid');
   g.innerHTML = '';
   if (!list || !list.length) {
-    g.innerHTML = '<div class="loading-msg">Ничего не найдено. Попробуйте другой запрос.</div>';
+    g.innerHTML = '<div class="loading-msg">Ничего не найдено. Попробуйте другой поисковый запрос.</div>';
     return;
   }
   list.forEach(v => {
     const card = document.createElement('div');
     card.className = 'card';
-    card.onclick = () => play(v.id, v.t);
+    card.onclick = () => play(v.id, v.t, v.ch, v.avatar, v.color);
+    
+    const initials = v.avatar || (v.ch ? v.ch.slice(0, 2).toUpperCase() : 'YT');
+    const color = v.color || '#ff0000';
+    
     card.innerHTML = 
       '<div class="card-thumb">' +
-        '<img src="https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg" alt="" loading="lazy">' +
+        '<img src="https://i.ytimg.com/vi/' + v.id + '/hqdefault.jpg" alt="" loading="lazy">' +
         '<span class="duration">' + (v.d || 'HD') + '</span>' +
       '</div>' +
-      '<div class="card-body">' +
-        '<div class="card-title">' + v.t + '</div>' +
-        '<div class="card-channel">' + v.ch + '</div>' +
+      '<div class="card-footer">' +
+        '<div class="card-avatar" style="background:' + color + '">' + initials + '</div>' +
+        '<div class="card-body">' +
+          '<div class="card-title">' + v.t + '</div>' +
+          '<div class="card-channel">' + v.ch + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="#aaa"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>' +
+          '<div class="card-meta">' + (v.views || 'Рекомендовано') + '</div>' +
+        '</div>' +
       '</div>';
     g.appendChild(card);
   });
 }
 
+/* ---------------- Карточка канала блогера ---------------- */
+function renderChannelCard(c) {
+  const container = document.getElementById('channelCardContainer');
+  if (!c) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+  
+  container.innerHTML = 
+    '<div class="channel-card">' +
+      '<div class="channel-avatar-wrap">' +
+        (c.avatar ? '<img class="channel-avatar" src="' + c.avatar + '" alt="' + c.name + '">' : '<div class="channel-avatar" style="background:' + (c.color || '#ff0000') + '">' + (c.initials || 'YT') + '</div>') +
+      '</div>' +
+      '<div class="channel-details">' +
+        '<div class="channel-name-row">' +
+          '<span class="channel-name">' + c.name + '</span>' +
+          '<svg class="verified-icon" viewBox="0 0 24 24" title="Официальный канал"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>' +
+        '</div>' +
+        '<div class="channel-meta">' + (c.handle || '@channel') + ' • ' + (c.subs || 'Подписчики') + ' • ' + (c.videos || 'Видео') + '</div>' +
+        '<div class="channel-desc">' + (c.desc || 'Официальный канал на YouTube') + '</div>' +
+      '</div>' +
+      '<div class="channel-action">' +
+        '<button class="sub-btn" onclick="toggleSub(this)">Подписаться</button>' +
+      '</div>' +
+    '</div>';
+  container.style.display = 'block';
+}
+
+function findChannel(q) {
+  const ql = (q || '').toLowerCase().trim();
+  for (let key in CHANNELS) {
+    if (ql.includes(key) || key.includes(ql)) {
+      return CHANNELS[key];
+    }
+  }
+  return null;
+}
+
+/* ---------------- Категории ---------------- */
 function filterCat(c) {
   curCat = c;
   document.querySelectorAll('.chip').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-cat') === c);
   });
+  document.getElementById('channelCardContainer').style.display = 'none';
+  
   if (c === 'all') {
     document.getElementById('sectionTitle').textContent = '🔥 Популярные видео';
-    renderVideos(VIDEOS);
+    renderVideos(POPULAR_VIDEOS);
+  } else if (c === 'sahar') {
+    doSearch('самый сахар');
+  } else if (c === 'bloggers') {
+    document.getElementById('sectionTitle').textContent = '🌟 Популярные блогеры';
+    renderVideos(POPULAR_VIDEOS.filter(v => v.c === 'bloggers' || v.c === 'sahar'));
   } else if (c === 'music') {
-    doSearch('музыка клипы', true);
-  } else if (c === 'trends') {
-    doSearch('тренды ютуб', true);
-  } else if (c === 'relax') {
-    doSearch('relax nature 4k', true);
+    document.getElementById('sectionTitle').textContent = '🎵 Музыка и клипы';
+    renderVideos(POPULAR_VIDEOS.filter(v => v.c === 'music'));
   } else if (c === 'games') {
-    doSearch('новые трейлеры игр', true);
+    document.getElementById('sectionTitle').textContent = '🎮 Игры и трейлеры';
+    renderVideos(POPULAR_VIDEOS.filter(v => v.c === 'games'));
+  } else if (c === 'challenges') {
+    doSearch('челленджи');
+  } else if (c === 'relax') {
+    document.getElementById('sectionTitle').textContent = '🌿 Природа & Релакс 4K';
+    renderVideos(POPULAR_VIDEOS.filter(v => v.c === 'relax'));
   }
 }
 
-async function doSearch(overrideQ, keepPlaying) {
-  const input = document.getElementById('searchInput');
-  const q = (overrideQ !== undefined ? overrideQ : input.value).trim();
+/* ---------------- Поиск ---------------- */
+async function doSearch(q) {
+  q = (q || '').trim();
   if (!q) return;
+  
+  const input = document.getElementById('searchInput');
   input.value = q;
-
+  document.getElementById('clearBtn').style.display = 'block';
+  hideSuggestions();
+  
+  // Если введена прямая ссылка на ролик
   const m = q.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|v\/|embed\/))([\w-]{6,})/);
   if (m) {
     play(m[1], 'Видео из ссылки');
     return;
   }
-
+  
+  // Проверяем, подходит ли запрос под блогера/канал
+  const matchedChannel = findChannel(q);
+  renderChannelCard(matchedChannel);
+  
   const titleEl = document.getElementById('sectionTitle');
-  titleEl.textContent = '🔍 Поиск: ' + q;
-
+  titleEl.textContent = matchedChannel ? ('📹 Видео канала «' + matchedChannel.name + '»') : ('🔍 Результаты поиска: ' + q);
+  
   const g = document.getElementById('videoGrid');
   g.innerHTML = '<div class="loading-msg"><div class="spinner"></div>Поиск видео на YouTube...</div>';
-
+  
   try {
     const url = new URL(location.href);
     url.searchParams.set('q', q);
     history.replaceState(null, '', url.pathname + url.search);
   } catch(e) {}
-
+  
+  // 1. Попытка запроса к живому поиску через сервер
   try {
     const resp = await fetch('/__youtube_search?q=' + encodeURIComponent(q));
     if (resp.ok) {
-      const items = await resp.json();
+      const data = await resp.json();
+      let items = [], serverChannel = null;
+      if (Array.isArray(data)) {
+        items = data;
+      } else if (data && data.videos) {
+        items = data.videos;
+        serverChannel = data.channel;
+      }
+      if (serverChannel && !matchedChannel) {
+        renderChannelCard(serverChannel);
+      }
       if (items && items.length > 0) {
         renderVideos(items);
-        if (!keepPlaying) {
-          play(items[0].id, items[0].t);
-        }
         return;
       }
     }
   } catch(err) {
-    console.warn('Live search offline/unavailable, using catalog fallback');
+    console.warn('Серверный поиск недоступен, использую встроенный каталог');
   }
-
-  const filtered = VIDEOS.filter(v => v.t.toLowerCase().includes(q.toLowerCase()) || v.ch.toLowerCase().includes(q.toLowerCase()));
+  
+  // 2. Локальный поиск по каталогу
+  const qLower = q.toLowerCase();
+  const filtered = POPULAR_VIDEOS.filter(v => 
+    v.t.toLowerCase().includes(qLower) || 
+    v.ch.toLowerCase().includes(qLower) ||
+    (v.c && v.c.toLowerCase().includes(qLower))
+  );
+  
   if (filtered.length) {
     renderVideos(filtered);
-    if (!keepPlaying) play(filtered[0].id, filtered[0].t);
   } else {
     g.innerHTML = '<div class="loading-msg">По запросу «' + q + '» ничего не найдено в каталоге.<br><br>' +
       '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
-      '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(q) + '" target="_blank" class="direct-btn">🔍 Искать на YouTube ↗</a>' +
+      '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(q) + '" target="_blank" class="action-btn">🔍 Искать на YouTube ↗</a>' +
       '<a href="https://rutube.ru/search/?query=' + encodeURIComponent(q) + '" target="_blank" class="rutube-btn">📺 Искать на RuTube ↗</a>' +
       '</div></div>';
   }
 }
 
-const urlParams = new URLSearchParams(window.location.search);
-const initialVid = urlParams.get('v') || 'aqz-KE-bpKQ';
-const initialQuery = urlParams.get('q') || '';
+function submitSearch() {
+  const q = document.getElementById('searchInput').value;
+  doSearch(q);
+}
 
+function clearSearch() {
+  const inp = document.getElementById('searchInput');
+  inp.value = '';
+  document.getElementById('clearBtn').style.display = 'none';
+  hideSuggestions();
+  inp.focus();
+}
+
+/* ---------------- Автодополнение / подсказки при вводе ---------------- */
+const searchInput = document.getElementById('searchInput');
+const suggestionsBox = document.getElementById('suggestionsBox');
+const clearBtn = document.getElementById('clearBtn');
+
+searchInput.addEventListener('input', () => {
+  const val = searchInput.value.trim();
+  clearBtn.style.display = val ? 'block' : 'none';
+  selectedSuggestionIndex = -1;
+  
+  clearTimeout(searchDebounceTimer);
+  if (!val) {
+    hideSuggestions();
+    return;
+  }
+  searchDebounceTimer = setTimeout(() => fetchSuggestions(val), 150);
+});
+
+searchInput.addEventListener('keydown', e => {
+  const items = suggestionsBox.querySelectorAll('.suggestion-item');
+  if (items.length && suggestionsBox.style.display !== 'none') {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedSuggestionIndex = (selectedSuggestionIndex + 1) % items.length;
+      updateSuggestionHighlight(items);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedSuggestionIndex = (selectedSuggestionIndex - 1 + items.length) % items.length;
+      updateSuggestionHighlight(items);
+      return;
+    }
+    if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
+      e.preventDefault();
+      items[selectedSuggestionIndex].click();
+      return;
+    }
+    if (e.key === 'Escape') {
+      hideSuggestions();
+      return;
+    }
+  }
+});
+
+function updateSuggestionHighlight(items) {
+  items.forEach((it, idx) => {
+    it.classList.toggle('selected', idx === selectedSuggestionIndex);
+    if (idx === selectedSuggestionIndex) {
+      searchInput.value = it.dataset.val;
+    }
+  });
+}
+
+async function fetchSuggestions(query) {
+  let list = [];
+  try {
+    const res = await fetch('/__youtube_suggest?q=' + encodeURIComponent(query));
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length) {
+        list = data;
+      }
+    }
+  } catch(e) {}
+  
+  if (!list.length) {
+    const ql = query.toLowerCase();
+    list = LOCAL_SUGGESTIONS.filter(s => s.toLowerCase().includes(ql)).slice(0, 8);
+  }
+  
+  renderSuggestions(list, query);
+}
+
+function renderSuggestions(list, query) {
+  if (!list || !list.length) {
+    hideSuggestions();
+    return;
+  }
+  suggestionsBox.innerHTML = '';
+  list.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'suggestion-item';
+    div.dataset.val = item;
+    
+    // Подсветка совпадающей части
+    let displayHtml = item;
+    const idx = item.toLowerCase().indexOf(query.toLowerCase());
+    if (idx >= 0) {
+      displayHtml = item.slice(0, idx) + '<b>' + item.slice(idx, idx + query.length) + '</b>' + item.slice(idx + query.length);
+    }
+    
+    div.innerHTML = 
+      '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>' +
+      '<span class="suggestion-text">' + displayHtml + '</span>';
+      
+    div.onclick = () => {
+      searchInput.value = item;
+      hideSuggestions();
+      doSearch(item);
+    };
+    suggestionsBox.appendChild(div);
+  });
+  suggestionsBox.style.display = 'block';
+}
+
+function hideSuggestions() {
+  suggestionsBox.style.display = 'none';
+  selectedSuggestionIndex = -1;
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) {
+    hideSuggestions();
+  }
+});
+
+/* ---------------- Начальная загрузка страницы ---------------- */
+const urlParams = new URLSearchParams(window.location.search);
+const initialVid = urlParams.get('v');
+const initialQuery = urlParams.get('q');
+
+// Если указано конкретное видео (v=...), открываем плеер
 if (initialVid) {
-  play(initialVid);
-  const found = VIDEOS.find(v => v.id === initialVid);
+  const found = POPULAR_VIDEOS.find(v => v.id === initialVid);
   if (found) {
-    document.getElementById('playerTitle').textContent = found.t;
+    play(found.id, found.t, found.ch, found.avatar, found.color);
   } else {
+    play(initialVid, 'YouTube Video');
     fetch('/__youtube_search?q=' + encodeURIComponent(initialVid))
       .then(r => r.json())
-      .then(items => {
+      .then(data => {
+        const items = Array.isArray(data) ? data : (data && data.videos ? data.videos : []);
         if (items && items.length && items[0].t) {
           document.getElementById('playerTitle').textContent = items[0].t;
+          if (items[0].ch) document.getElementById('playerAuthor').textContent = items[0].ch;
         }
       }).catch(() => {});
   }
 }
 
+// Если указан поисковый запрос (q=...), выполняем поиск
 if (initialQuery) {
-  document.getElementById('searchInput').value = initialQuery;
-  doSearch(initialQuery, !!urlParams.get('v'));
+  searchInput.value = initialQuery;
+  clearBtn.style.display = 'block';
+  doSearch(initialQuery);
 } else {
-  renderVideos(VIDEOS);
+  // Иначе просто показываем главный экран с популярными видео БЕЗ автовоспроизведения детских мультиков!
+  renderVideos(POPULAR_VIDEOS);
 }
 </script>
 </body>

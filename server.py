@@ -379,6 +379,48 @@ if (initialQuery) {
 </html>"""
 
 
+KNOWN_CHANNELS = {
+    'самый сахар': {
+        'name': 'Самый сахар',
+        'handle': '@sugarsvyat',
+        'subs': '2,48 млн подписчиков',
+        'videos': '430 видео',
+        'avatar': 'https://i.ytimg.com/vi/Xu5kVqk6QNA/hqdefault.jpg',
+        'desc': 'Официальный канал Самый сахар! Сладкие эксперименты, кулинарные челленджи, редкие сладости мира и весёлые обзоры!',
+    },
+    'mrbeast': {
+        'name': 'MrBeast',
+        'handle': '@MrBeast',
+        'subs': '318 млн подписчиков',
+        'videos': '820 видео',
+        'avatar': 'https://i.ytimg.com/vi/YwGiP6f-ei8/hqdefault.jpg',
+        'desc': 'Официальный русскоязычный дубляж! Самые масштабные челленджи и эксперименты в мире.',
+    },
+    'а4': {
+        'name': 'А4',
+        'handle': '@a4omg',
+        'subs': '58 млн подписчиков',
+        'videos': '1,2 тыс. видео',
+        'avatar': 'https://i.ytimg.com/vi/pIZlew_5c4g/hqdefault.jpg',
+        'desc': 'Официальный канал Влада А4! Челленджи, крутые ролики и пранки каждый день.',
+    },
+    'куплинов': {
+        'name': 'Kuplinov ► Play',
+        'handle': '@kuplinovplay',
+        'subs': '16,2 млн подписчиков',
+        'videos': '7,8 тыс. видео',
+        'avatar': 'https://i.ytimg.com/vi/8X2kIfS6fb8/hqdefault.jpg',
+        'desc': 'Канал Kuplinov ► Play. Прохождение самых захватывающих игр, хорроры и море позитива.',
+    }
+}
+
+def get_known_channel(query):
+    ql = (query or '').lower().strip()
+    for k, v in KNOWN_CHANNELS.items():
+        if k in ql or ql in k:
+            return v
+    return None
+
 def get_video_meta(vid):
     """Получает название и автора видеоролика через noembed oEmbed API."""
     try:
@@ -389,26 +431,29 @@ def get_video_meta(vid):
         data = json.loads(r.read())
         title = data.get('title') or ('YouTube Video ' + vid)
         author = data.get('author_name') or 'YouTube'
-        return {'id': vid, 't': title, 'ch': author, 'd': 'YouTube', 'c': 'video'}
+        return {'id': vid, 't': title, 'ch': author, 'd': 'HD', 'c': 'video'}
     except Exception:
         return {'id': vid, 't': 'YouTube Video (' + vid + ')', 'ch': 'YouTube', 'd': 'HD', 'c': 'video'}
 
 
 def search_youtube_videos(query):
     """Ищет видео на YouTube через мобильный поиск Яндекс.Видео (без блокировок)
-    и обогащает карточки названиями роликов."""
+    и обогащает карточки названиями роликов и информацией о канале."""
     query = (query or '').strip()
     if not query:
-        return []
+        return {'channel': None, 'videos': []}
+
+    channel = get_known_channel(query)
+
     # Если введён ID или прямая ссылка
     m = (re.search(r'youtu\.be/([\w-]{6,})', query)
          or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/)([\w-]{6,})', query))
     if m:
-        return [get_video_meta(m.group(1))]
+        return {'channel': channel, 'videos': [get_video_meta(m.group(1))]}
     if re.fullmatch(r'[\w-]{11}', query):
-        return [get_video_meta(query)]
+        return {'channel': channel, 'videos': [get_video_meta(query)]}
 
-    url = 'https://yandex.ru/video/touch/search?text=' + urllib.parse.quote(query)
+    url = 'https://yandex.ru/video/touch/search?text=' + urllib.parse.quote('youtube ' + query)
     req = urllib.request.Request(url, headers={'User-Agent': UA})
     ctx = ssl._create_unverified_context()
     results = []
@@ -421,7 +466,20 @@ def search_youtube_videos(query):
                 results = list(executor.map(get_video_meta, vids[:12]))
     except Exception as e:
         print('[server] YouTube search error:', e)
-    return results
+
+    if not channel and results:
+        top_author = results[0]['ch']
+        if top_author and top_author != 'YouTube':
+            channel = {
+                'name': top_author,
+                'handle': '@' + re.sub(r'[^\w]', '', top_author).lower(),
+                'subs': 'Канал автора',
+                'videos': f'{len(results)}+ видео',
+                'avatar': f'https://i.ytimg.com/vi/{results[0]["id"]}/hqdefault.jpg',
+                'desc': f'Официальные видеоролики от автора {top_author}'
+            }
+
+    return {'channel': channel, 'videos': results}
 
 
 def youtube_embed(url):
@@ -535,6 +593,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith('/__youtube_search'):
             self.youtube_search()
             return
+        if self.path.startswith('/__youtube_suggest'):
+            self.youtube_suggest()
+            return
         if self.path.startswith('/__youtube') or self.path.startswith('/youtube.html'):
             self.youtube()
             return
@@ -615,21 +676,49 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def youtube(self):
-        """Встроенный портал YouTube: поиск, просмотр и популярные ролики без ошибки 153."""
+    def youtube_suggest(self):
+        """Возвращает поисковые подсказки в формате JSON для автодополнения."""
         q = urllib.parse.urlsplit(self.path).query
         params = urllib.parse.parse_qs(q)
-        v = (params.get('v') or [''])[0]
-        query = (params.get('q') or [''])[0]
+        query = (params.get('q') or [''])[0].strip()
+        results = []
+        if query:
+            try:
+                url = 'https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=' + urllib.parse.quote(query)
+                req = urllib.request.Request(url, headers={'User-Agent': UA})
+                ctx = ssl._create_unverified_context()
+                r = urllib.request.urlopen(req, context=ctx, timeout=2.5)
+                data = json.loads(r.read().decode('utf-8', errors='ignore'))
+                results = data[1] if isinstance(data, list) and len(data) > 1 else []
+            except Exception:
+                try:
+                    url2 = 'https://yandex.ru/suggest/suggest-ya.cgi?part=' + urllib.parse.quote(query) + '&v=4'
+                    req2 = urllib.request.Request(url2, headers={'User-Agent': UA})
+                    ctx2 = ssl._create_unverified_context()
+                    r2 = urllib.request.urlopen(req2, context=ctx2, timeout=2.5)
+                    data2 = json.loads(r2.read().decode('utf-8', errors='ignore'))
+                    results = data2[1] if isinstance(data2, list) and len(data2) > 1 else []
+                except Exception:
+                    results = []
+        body = json.dumps(results[:8], ensure_ascii=False).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Private-Network', 'true')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
 
-        if not v and query:
-            m = (re.search(r'youtu\.be/([\w-]{6,})', query)
-                 or re.search(r'youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|v/|embed/)([\w-]{6,})', query))
-            if m:
-                v = m.group(1)
+    def youtube(self):
+        """Встроенный портал YouTube: поиск, просмотр и популярные ролики без автовоспроизведения."""
+        path = os.path.join(ROOT, 'youtube.html')
+        if os.path.isfile(path):
+            with open(path, 'rb') as f:
+                body = f.read()
+        else:
+            body = YOUTUBE_HTML.encode('utf-8')
 
-        default_video = v or 'aqz-KE-bpKQ'
-        body = YOUTUBE_HTML.replace('{{VIDEO_ID}}', html_mod.escape(default_video, quote=True)).replace('{{QUERY}}', html_mod.escape(query, quote=True)).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
